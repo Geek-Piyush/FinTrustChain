@@ -34,7 +34,7 @@ export default function Footer() {
             <div className="flex items-center gap-3 mt-4">
               <a href="#" className="p-2 bg-white/6 rounded hover:bg-white/10"><Twitter size={18} /></a>
               <a href="#" className="p-2 bg-white/6 rounded hover:bg-white/10"><Linkedin size={18} /></a>
-              <a href="mailto:support@fintrustchain.example" className="p-2 bg-white/6 rounded hover:bg-white/10"><Mail size={18} /></a>
+              <a href="mailto:piyushnas74@gmail.com" className="p-2 bg-white/6 rounded hover:bg-white/10"><Mail size={18} /></a>
             </div>
           </div>
 

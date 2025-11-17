@@ -74,7 +74,9 @@ export default function Header() {
       <nav className="px-4 flex m-auto items-center justify-between rounded-3xl gap-4 max-w-[1200px] w-full backdrop-blur-lg py-3">
         <div className="flex items-center gap-3">
           <Link to="/" className="flex items-center gap-3">
-            <span className="logo-mark" aria-hidden />
+            <span className="w-10" >
+              <img src="/Logo.png" alt="FinTrustChain Logo" />
+            </span>
             <span className="font-semibold text-white">FinTrustChain</span>
           </Link>
         </div>

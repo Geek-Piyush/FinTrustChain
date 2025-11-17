@@ -267,7 +267,7 @@ export default function Dashboard() {
         <div className="bg-white/5 border border-white/10 rounded-xl p-6">
           <div className="text-gray-400 text-sm mb-2">Active Loans</div>
           <div className="text-3xl font-bold text-white">
-            {contracts.length} / 2
+            {contracts.length}
           </div>
         </div>
         <div className="bg-white/5 border border-white/10 rounded-xl p-6">
