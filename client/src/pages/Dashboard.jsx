@@ -70,7 +70,7 @@ export default function Dashboard() {
         brochuresRes.data?.brochures ||
         [];
 
-      const filtered = allBrochures.filter((b) => {
+      const filtered = allBrochures.filter(b => {
         const isActive = b.active === true || b.active === undefined;
         const lenderId = b.lender?._id || b.lender?.id || b.lender;
         const userId = user?._id || user?.id;
@@ -86,17 +86,17 @@ export default function Dashboard() {
     }
   };
 
-  const toggleBrochureSelection = (brochure) => {
+  const toggleBrochureSelection = brochure => {
     console.log("Toggling brochure:", brochure);
-    setSelectedBrochures((prev) => {
+    setSelectedBrochures(prev => {
       console.log("Current selected brochures:", prev);
       const exists = prev.find(
-        (b) => (b._id || b.id) === (brochure._id || brochure.id)
+        b => (b._id || b.id) === (brochure._id || brochure.id)
       );
       if (exists) {
         console.log("Removing brochure from selection");
         return prev.filter(
-          (b) => (b._id || b.id) !== (brochure._id || brochure.id)
+          b => (b._id || b.id) !== (brochure._id || brochure.id)
         );
       }
       if (prev.length >= 3) {
@@ -126,7 +126,7 @@ export default function Dashboard() {
 
     // Check if user already has an active loan request
     const hasActiveLoanRequest = myLoanRequests.some(
-      (lr) =>
+      lr =>
         lr.status === "PENDING" ||
         lr.status === "PENDING_GUARANTOR" ||
         lr.status === "GUARANTOR_ACCEPTED" ||
@@ -165,7 +165,7 @@ export default function Dashboard() {
     setApplying(true);
     try {
       // Create single loan request with all selected brochures
-      const brochureIds = selectedBrochures.map((b) => b._id || b.id);
+      const brochureIds = selectedBrochures.map(b => b._id || b.id);
       const guarantorId = selectedGuarantor._id || selectedGuarantor.id;
 
       const payload = {
@@ -195,7 +195,7 @@ export default function Dashboard() {
     }
   };
 
-  const getTIColor = (ti) => {
+  const getTIColor = ti => {
     if (ti >= 800) return "text-emerald-400";
     if (ti >= 600) return "text-green-400";
     if (ti >= 500) return "text-yellow-400";
@@ -203,7 +203,7 @@ export default function Dashboard() {
     return "text-red-400";
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = status => {
     const colors = {
       PENDING: "bg-yellow-500/20 text-yellow-400 border-yellow-500",
       PENDING_GUARANTOR: "bg-yellow-500/20 text-yellow-400 border-yellow-500",
@@ -225,7 +225,7 @@ export default function Dashboard() {
     );
   };
 
-  const isGuarantorEligible = (guarantor) => {
+  const isGuarantorEligible = guarantor => {
     if (!guarantor) return false;
     // Endorsers can be guarantors (they're different users by definition)
     // Just check TI requirement
@@ -298,9 +298,9 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {availableBrochures.map((brochure) => {
+              {availableBrochures.map(brochure => {
                 const isSelected = selectedBrochures.some(
-                  (b) => (b._id || b.id) === (brochure._id || brochure.id)
+                  b => (b._id || b.id) === (brochure._id || brochure.id)
                 );
 
                 return (
@@ -403,7 +403,7 @@ export default function Dashboard() {
                 </label>
                 <textarea
                   value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
+                  onChange={e => setPurpose(e.target.value)}
                   rows={3}
                   maxLength={500}
                   placeholder="Explain why you need this loan..."
@@ -467,7 +467,7 @@ export default function Dashboard() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {myEndorsers.map((g) => {
+                        {myEndorsers.map(g => {
                           const eligible = isGuarantorEligible(g);
                           return (
                             <div
@@ -568,7 +568,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {myLoanRequests.map((req) => (
+              {myLoanRequests.map(req => (
                 <div
                   key={req._id}
                   className="bg-white/5 border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-all"
@@ -617,7 +617,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {contracts.map((c) => {
+              {contracts.map(c => {
                 const isLender =
                   user?._id === c.lender?._id || user?.id === c.lender?._id;
                 const isReceiver =
@@ -668,7 +668,7 @@ export default function Dashboard() {
                       {needsMySignature &&
                         c.status === "PENDING_SIGNATURES" && (
                           <button
-                            onClick={async (e) => {
+                            onClick={async e => {
                               e.stopPropagation();
                               if (confirm("Sign this contract?")) {
                                 try {
@@ -689,7 +689,7 @@ export default function Dashboard() {
                           </button>
                         )}
                       <button
-                        onClick={async (e) => {
+                        onClick={async e => {
                           e.stopPropagation();
                           try {
                             const res = await contractsApi.downloadPdf(c._id);
@@ -738,7 +738,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {pendingGRequests.map((req) => (
+              {pendingGRequests.map(req => (
                 <GuarantorRequestCard
                   key={req._id}
                   request={req}

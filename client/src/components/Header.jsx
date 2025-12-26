@@ -45,7 +45,7 @@ export default function Header() {
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = event => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setUserMenuOpen(false);
       }
@@ -104,7 +104,7 @@ export default function Header() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-1">
-          {tabs.map((t) => (
+          {tabs.map(t => (
             <NavLink
               key={t.to}
               to={t.to}
@@ -218,7 +218,7 @@ export default function Header() {
 
         {/* Mobile Menu Button */}
         <button
-          onClick={() => setSidebarOpen((s) => !s)}
+          onClick={() => setSidebarOpen(s => !s)}
           className="md:hidden p-2.5 rounded-xl hover:bg-white/10 text-white transition-colors"
           aria-label="Toggle menu"
         >
@@ -250,7 +250,7 @@ export default function Header() {
             </div>
 
             <nav className="flex flex-col gap-1">
-              {tabs.map((t) => (
+              {tabs.map(t => (
                 <Link
                   key={t.to}
                   to={t.to}
