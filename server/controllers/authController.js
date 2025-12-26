@@ -99,15 +99,17 @@ export const registerUser = async (req, res, next) => {
       await new Email(newUser, verificationURL).sendVerificationEmail();
       console.log("✅ Verification email sent successfully");
     } catch (err) {
+      // Clear verification token if email fails
       newUser.emailVerificationToken = undefined;
       newUser.emailVerificationExpires = undefined;
       await newUser.save({ validateBeforeSave: false });
       console.error("EMAIL ERROR 📧:", err);
-      return next(
-        new Error(
-          "There was an error sending the verification email. Please try again later."
-        )
+
+      // Log warning but allow registration to continue
+      console.warn(
+        "⚠️  User registered but verification email could not be sent. Please configure SENDGRID_API_KEY."
       );
+      // Don't return error - let registration succeed
     }
     // --- END: SEND VERIFICATION EMAIL ---
 
