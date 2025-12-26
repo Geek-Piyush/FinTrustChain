@@ -52,20 +52,20 @@ export default function LoanRequestForm() {
     }
   };
 
-  const handleSelectGuarantor = guarantor => {
+  const handleSelectGuarantor = (guarantor) => {
     setSelectedGuarantor(guarantor);
     setGuarantorSearch("");
     setGuarantorResults([]);
   };
 
-  const toggleBrochure = brochure => {
-    setSelectedBrochures(prev => {
+  const toggleBrochure = (brochure) => {
+    setSelectedBrochures((prev) => {
       const exists = prev.find(
-        b => (b._id || b.id) === (brochure._id || brochure.id)
+        (b) => (b._id || b.id) === (brochure._id || brochure.id)
       );
       if (exists) {
         return prev.filter(
-          b => (b._id || b.id) !== (brochure._id || brochure.id)
+          (b) => (b._id || b.id) !== (brochure._id || brochure.id)
         );
       }
       if (prev.length >= 3) {
@@ -76,7 +76,7 @@ export default function LoanRequestForm() {
     });
   };
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     // Validations
@@ -105,7 +105,7 @@ export default function LoanRequestForm() {
 
     setLoading(true);
     try {
-      const brochureIds = selectedBrochures.map(b => b._id || b.id);
+      const brochureIds = selectedBrochures.map((b) => b._id || b.id);
 
       const payload = {
         brochureIds: brochureIds,
@@ -124,7 +124,7 @@ export default function LoanRequestForm() {
     }
   };
 
-  const getTIColor = ti => {
+  const getTIColor = (ti) => {
     if (ti >= 800) return "text-emerald-400";
     if (ti >= 600) return "text-green-400";
     if (ti >= 500) return "text-yellow-400";
@@ -132,7 +132,7 @@ export default function LoanRequestForm() {
     return "text-red-400";
   };
 
-  const isGuarantorEligible = guarantor => {
+  const isGuarantorEligible = (guarantor) => {
     if (!guarantor) return false;
     if (guarantor._id === user?._id || guarantor.id === user?.id) return false;
     if (guarantor.trustIndex < 500) return false;
@@ -140,11 +140,11 @@ export default function LoanRequestForm() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-24 min-h-screen">
+    <div className="min-h-screen pt-24 pb-12 px-4">
       <div className="max-w-3xl mx-auto">
         <button
           onClick={() => navigate(-1)}
-          className="mb-6 text-blue-400 hover:text-blue-300"
+          className="mb-6 text-blue-400 hover:text-blue-300 flex items-center gap-1"
         >
           ← Back
         </button>
@@ -158,7 +158,7 @@ export default function LoanRequestForm() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Selected Brochures Display */}
-          <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+          <div className="bg-[#1a2332]/40 border border-blue-500/10 rounded-3xl p-6">
             <h2 className="text-lg font-semibold text-white mb-4">
               Selected Brochures ({selectedBrochures.length}/3)
             </h2>
@@ -173,7 +173,7 @@ export default function LoanRequestForm() {
                 {selectedBrochures.map((brochure, idx) => (
                   <div
                     key={idx}
-                    className="bg-white/5 border border-white/10 rounded-lg p-4 flex justify-between items-center"
+                    className="bg-[#1214] border border-white/10 rounded-lg p-4 flex justify-between items-center"
                   >
                     <div>
                       <div className="font-semibold text-white">
@@ -207,7 +207,7 @@ export default function LoanRequestForm() {
             </label>
             <textarea
               value={purpose}
-              onChange={e => setPurpose(e.target.value)}
+              onChange={(e) => setPurpose(e.target.value)}
               required
               rows={4}
               maxLength={500}
@@ -227,7 +227,7 @@ export default function LoanRequestForm() {
             <input
               type="file"
               accept="image/*,.pdf"
-              onChange={e => setIncomeProof(e.target.files[0])}
+              onChange={(e) => setIncomeProof(e.target.files[0])}
               className="block w-full text-sm text-gray-400
                 file:mr-4 file:py-2 file:px-4
                 file:rounded file:border-0
@@ -283,8 +283,8 @@ export default function LoanRequestForm() {
                     <input
                       type="text"
                       value={guarantorSearch}
-                      onChange={e => setGuarantorSearch(e.target.value)}
-                      onKeyPress={e =>
+                      onChange={(e) => setGuarantorSearch(e.target.value)}
+                      onKeyPress={(e) =>
                         e.key === "Enter" &&
                         (e.preventDefault(), handleSearchGuarantor())
                       }
@@ -303,7 +303,7 @@ export default function LoanRequestForm() {
 
                   {guarantorResults.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {guarantorResults.map(g => {
+                      {guarantorResults.map((g) => {
                         const eligible = isGuarantorEligible(g);
                         return (
                           <div
@@ -365,7 +365,7 @@ export default function LoanRequestForm() {
                       Suggested Guarantors
                     </h3>
                     <div className="grid grid-cols-1 gap-2">
-                      {eligibleGuarantors.slice(0, 5).map(g => (
+                      {eligibleGuarantors.slice(0, 5).map((g) => (
                         <button
                           key={g._id}
                           type="button"

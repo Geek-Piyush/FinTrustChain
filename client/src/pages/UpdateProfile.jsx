@@ -15,7 +15,7 @@ export default function UpdateProfile() {
   const [loading, setLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  const handleFileChange = e => {
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setAvatarFile(file);
@@ -23,7 +23,7 @@ export default function UpdateProfile() {
     }
   };
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!upiId || !upiId.trim()) {
@@ -77,17 +77,17 @@ export default function UpdateProfile() {
 
   if (!user) {
     return (
-      <div className="container mx-auto px-4 py-24 min-h-screen flex items-center justify-center">
+      <div className="min-h-screen pt-24 pb-12 px-4 flex items-center justify-center">
         <Loader />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-24 min-h-screen">
+    <div className="min-h-screen pt-24 pb-12 px-4">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold text-white mb-2">Update Profile</h1>
-        <p className="text-gray-400 mb-8">
+        <p className="text-slate-400 mb-8">
           Keep your information up to date for smooth transactions
         </p>
 
@@ -141,7 +141,7 @@ export default function UpdateProfile() {
             </label>
             <textarea
               value={bio}
-              onChange={e => setBio(e.target.value)}
+              onChange={(e) => setBio(e.target.value)}
               maxLength={500}
               rows={4}
               className="w-full p-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
@@ -160,7 +160,7 @@ export default function UpdateProfile() {
             <input
               type="text"
               value={upiId}
-              onChange={e => setUpiId(e.target.value)}
+              onChange={(e) => setUpiId(e.target.value)}
               required
               className="w-full p-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
               placeholder="yourname@upi"

@@ -1,16 +1,68 @@
 /* App level styles */
-html, body, #root {
-	height: 100%;
+html,
+body,
+#root {
+  height: 100%;
 }
 
+/* Main content wrapper - accounts for fixed header */
 .main-content {
-	min-height: calc(100vh - 136px);
+  min-height: calc(100vh - 80px);
+  padding-top: 80px;
 }
 
+/* Page wrapper for consistent spacing */
+.page-wrapper {
+  min-height: calc(100vh - 80px);
+  padding-top: 96px;
+  padding-bottom: 48px;
+}
+
+/* Logo mark */
 .logo-mark {
-	width: 36px;
-	height: 36px;
-	border-radius: 8px;
-	background: linear-gradient(90deg, var(--neon-primary), var(--neon-accent));
-	box-shadow: 0 4px 18px rgba(124,77,255,0.18);
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #3b82f6;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(26, 35, 50, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+/* Smooth transitions for interactive elements */
+button,
+a,
+input,
+textarea {
+  transition: all 0.2s ease;
+}
+
+/* Focus visible styling */
+:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.5);
+  outline-offset: 2px;
 }

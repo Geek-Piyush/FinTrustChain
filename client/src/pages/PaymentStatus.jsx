@@ -95,8 +95,8 @@ const PaymentStatus = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
-      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 max-w-md w-full mx-4 text-center">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-slate-900 via-indigo-900/20 to-slate-900">
+      <div className="bg-slate-800/80 backdrop-blur-lg border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 text-center">
         {/* Debug Info - Always Visible */}
         <div className="bg-black/30 rounded-lg p-3 mb-4 text-left text-xs">
           <div className="text-gray-400">Debug Info:</div>
@@ -148,7 +148,7 @@ const PaymentStatus = () => {
             </p>
             <button
               onClick={() => navigate("/dashboard")}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium transition-colors"
+              className="px-6 py-3 bg-blue-500 hover:bg-indigo-600 rounded-lg text-white font-medium transition-colors"
             >
               Go to Dashboard Now
             </button>
@@ -176,7 +176,7 @@ const PaymentStatus = () => {
               Payment Processing Issue
             </h2>
             <p className="text-gray-300 mb-4">{message}</p>
-            <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4 text-left">
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 mb-4 text-left">
               <p className="text-sm text-red-300 mb-2">
                 <strong>Error Details:</strong>
               </p>
@@ -192,7 +192,7 @@ const PaymentStatus = () => {
                   navigate("/dashboard");
                 }
               }}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium transition-colors"
+              className="px-6 py-3 bg-blue-500 hover:bg-indigo-600 rounded-lg text-white font-medium transition-colors"
             >
               {contractId ? "Back to Contract" : "Back to Dashboard"}
             </button>

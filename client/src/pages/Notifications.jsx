@@ -25,11 +25,11 @@ export default function Notifications() {
     }
   };
 
-  const handleMarkAsRead = async id => {
+  const handleMarkAsRead = async (id) => {
     try {
       await notifications.markAsRead(id);
-      setItems(prev =>
-        prev.map(n => (n._id === id ? { ...n, isRead: true } : n))
+      setItems((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
       );
     } catch (err) {
       console.error("Failed to mark as read", err);
@@ -39,22 +39,22 @@ export default function Notifications() {
   const handleMarkAllAsRead = async () => {
     try {
       await notifications.markAllAsRead();
-      setItems(prev => prev.map(n => ({ ...n, isRead: true })));
+      setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
     } catch (err) {
       console.error("Failed to mark all as read", err);
     }
   };
 
-  const handleDelete = async id => {
+  const handleDelete = async (id) => {
     try {
       await notifications.delete(id);
-      setItems(prev => prev.filter(n => n._id !== id));
+      setItems((prev) => prev.filter((n) => n._id !== id));
     } catch (err) {
       console.error("Failed to delete notification", err);
     }
   };
 
-  const handleNotificationClick = notification => {
+  const handleNotificationClick = (notification) => {
     if (!notification.isRead) {
       handleMarkAsRead(notification._id);
     }
@@ -82,7 +82,7 @@ export default function Notifications() {
     }
   };
 
-  const getNotificationIcon = type => {
+  const getNotificationIcon = (type) => {
     switch (type) {
       case "GUARANTOR_REQUEST":
         return "🤝";
@@ -107,7 +107,7 @@ export default function Notifications() {
     }
   };
 
-  const getNotificationColor = type => {
+  const getNotificationColor = (type) => {
     switch (type) {
       case "GUARANTOR_REQUEST":
         return "border-blue-500/30 bg-blue-500/10";
@@ -124,11 +124,11 @@ export default function Notifications() {
     }
   };
 
-  const unreadCount = items.filter(n => !n.isRead).length;
+  const unreadCount = items.filter((n) => !n.isRead).length;
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-24 min-h-screen flex items-center justify-center">
+      <div className="min-h-screen pt-24 pb-12 px-4 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <div className="text-gray-400 mt-4">Loading notifications...</div>
@@ -138,7 +138,7 @@ export default function Notifications() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-24 min-h-screen">
+    <div className="min-h-screen pt-24 pb-12 px-4">
       <div className="max-w-3xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -170,7 +170,7 @@ export default function Notifications() {
           </div>
         ) : (
           <div className="space-y-3">
-            {items.map(notification => (
+            {items.map((notification) => (
               <div
                 key={notification._id}
                 className={`border rounded-lg p-4 transition-all cursor-pointer hover:bg-white/10 ${
@@ -210,7 +210,7 @@ export default function Notifications() {
                   <div className="flex gap-2">
                     {!notification.isRead && (
                       <button
-                        onClick={e => {
+                        onClick={(e) => {
                           e.stopPropagation();
                           handleMarkAsRead(notification._id);
                         }}
@@ -221,7 +221,7 @@ export default function Notifications() {
                       </button>
                     )}
                     <button
-                      onClick={e => {
+                      onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(notification._id);
                       }}
