@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Twitter, Linkedin, Mail, Github, Send } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
 
 export default function Footer() {
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
 
-  const submitSubscribe = e => {
+  const submitSubscribe = (e) => {
     e.preventDefault();
     if (!email || !/.+@.+\..+/.test(email)) {
       toast.error("Please enter a valid email");
@@ -78,9 +80,9 @@ export default function Footer() {
                 { to: "/", label: "Home" },
                 { to: "/about", label: "About Us" },
                 { to: "/how-it-works", label: "How It Works" },
-                { to: "/brochures", label: "Browse Loans" },
+                ...(user ? [{ to: "/brochures", label: "Browse Loans" }] : []),
                 { to: "/contact", label: "Contact" },
-              ].map(link => (
+              ].map((link) => (
                 <li key={link.to}>
                   <Link
                     to={link.to}
@@ -101,7 +103,7 @@ export default function Footer() {
                 { to: "/services", label: "Services" },
                 { to: "/pricing", label: "Pricing" },
                 { to: "/privacy", label: "Privacy Policy" },
-              ].map(link => (
+              ].map((link) => (
                 <li key={link.to}>
                   <Link
                     to={link.to}
@@ -125,7 +127,7 @@ export default function Footer() {
                 <input
                   type="email"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
                   className="w-full px-4 py-3 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition-colors text-sm"
                 />
