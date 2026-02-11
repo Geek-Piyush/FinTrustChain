@@ -1,6 +1,11 @@
 import React from "react";
 
-export default function EMIScheduleTable({ schedule }) {
+export default function EMIScheduleTable({
+  schedule,
+  onPayEMI,
+  isReceiver,
+  payingEMI,
+}) {
   if (!schedule || schedule.length === 0) {
     return (
       <div className="text-gray-400 text-center py-6">
@@ -9,7 +14,7 @@ export default function EMIScheduleTable({ schedule }) {
     );
   }
 
-  const getStatusBadge = status => {
+  const getStatusBadge = (status) => {
     const statusColors = {
       PAID: "bg-green-500/20 text-green-400 border-green-500",
       PENDING: "bg-yellow-500/20 text-yellow-400 border-yellow-500",
@@ -30,6 +35,10 @@ export default function EMIScheduleTable({ schedule }) {
   const isOverdue = (dueDate, status) => {
     return status === "PENDING" && new Date(dueDate) < new Date();
   };
+
+  // Find the first pending EMI number (only this one gets the Pay button)
+  const firstPendingEMI = schedule.find((e) => e.status === "PENDING");
+  const firstPendingNumber = firstPendingEMI?.emiNumber;
 
   return (
     <div className="overflow-x-auto">
@@ -54,11 +63,20 @@ export default function EMIScheduleTable({ schedule }) {
             <th className="text-center p-3 text-sm font-semibold text-gray-300">
               Status
             </th>
+            {isReceiver && onPayEMI && (
+              <th className="text-center p-3 text-sm font-semibold text-gray-300">
+                Action
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
           {schedule.map((emi, idx) => {
             const overdue = isOverdue(emi.dueDate, emi.status);
+            const emiNum = emi.emiNumber || idx + 1;
+            const isNextPayable =
+              emi.status === "PENDING" && emiNum === firstPendingNumber;
+
             return (
               <tr
                 key={idx}
@@ -67,13 +85,13 @@ export default function EMIScheduleTable({ schedule }) {
                     ? "bg-green-500/5"
                     : overdue
                     ? "bg-red-500/10"
-                    : idx === schedule.findIndex(e => e.status === "PENDING")
+                    : isNextPayable
                     ? "bg-yellow-500/10"
                     : ""
                 }`}
               >
                 <td className="p-3 text-sm text-white font-medium">
-                  #{emi.emiNumber || idx + 1}
+                  #{emiNum}
                 </td>
                 <td className="p-3 text-sm text-gray-300">
                   {new Date(emi.dueDate).toLocaleDateString()}
@@ -93,6 +111,30 @@ export default function EMIScheduleTable({ schedule }) {
                 <td className="p-3 text-center">
                   {getStatusBadge(overdue ? "OVERDUE" : emi.status)}
                 </td>
+                {isReceiver && onPayEMI && (
+                  <td className="p-3 text-center">
+                    {isNextPayable ? (
+                      <button
+                        onClick={() => onPayEMI(emiNum)}
+                        disabled={payingEMI === emiNum}
+                        className="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto"
+                      >
+                        {payingEMI === emiNum ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Paying...
+                          </>
+                        ) : (
+                          "Pay Now"
+                        )}
+                      </button>
+                    ) : emi.status === "PAID" ? (
+                      <span className="text-xs text-green-400">✓ Paid</span>
+                    ) : (
+                      <span className="text-xs text-gray-500">—</span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -125,6 +167,7 @@ export default function EMIScheduleTable({ schedule }) {
                 .toLocaleString()}
             </td>
             <td></td>
+            {isReceiver && onPayEMI && <td></td>}
           </tr>
         </tfoot>
       </table>

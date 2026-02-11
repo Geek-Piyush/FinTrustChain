@@ -49,13 +49,17 @@ const contractSchema = new mongoose.Schema(
     pdfFilename: { type: String },
     repaymentSchedule: [
       {
+        emiNumber: { type: Number, required: true },
         dueDate: Date,
         amountDue: Number,
+        principal: Number,
+        interest: Number,
         status: {
           type: String,
-          enum: ["PENDING", "PAID", "LATE"],
+          enum: ["PENDING", "PAID", "OVERDUE"],
           default: "PENDING",
         },
+        paidAt: Date,
       },
     ],
   },

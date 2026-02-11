@@ -10,6 +10,8 @@ import {
   getReceiverUpi,
   getContractDetails,
   getContractPDF,
+  getEMISchedule,
+  getPaymentHistory,
 } from "../controllers/contractController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 import { checkLoanDefaults } from "../utils/scheduler.js";
@@ -19,6 +21,8 @@ const router = express.Router();
 router.use(protect);
 
 router.get("/:id", getContractDetails);
+router.get("/:id/emi-schedule", getEMISchedule);
+router.get("/:id/payment-history", getPaymentHistory);
 
 // Endpoint to fetch and download the contract PDF
 router.get("/:id/download-pdf", getContractPDF);

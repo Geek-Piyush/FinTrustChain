@@ -8,6 +8,7 @@ import * as pdfService from "../services/pdfService.js";
 import multer from "multer";
 import path from "path";
 import * as paymentService from "../services/paymentService.js";
+import { generateEMISchedule } from "../services/emiService.js";
 
 // --- MULTER SETUP for Payment Proof ---
 const proofStorage = multer.diskStorage({
@@ -272,6 +273,12 @@ export const confirmReceipt = async (req, res, next) => {
       Date.now() + contract.tenorDays * 24 * 60 * 60 * 1000
     );
 
+    // Generate EMI repayment schedule
+    contract.repaymentSchedule = generateEMISchedule(contract);
+    console.log(
+      `Generated ${contract.repaymentSchedule.length} EMI installments for contract ${contract.id}`
+    );
+
     await contract.save();
 
     res.status(200).json({
@@ -532,6 +539,73 @@ export const getContractPDF = async (req, res, next) => {
           message: "Error reading PDF file.",
         });
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /contracts/:id/emi-schedule
+export const getEMISchedule = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+
+    const contract = await Contract.findById(id);
+    if (!contract) {
+      throw new Error("Contract not found.");
+    }
+
+    // Security: only contract parties can view the schedule
+    const isParty =
+      contract.lender.equals(user.id) ||
+      contract.receiver.equals(user.id) ||
+      contract.guarantor.equals(user.id);
+    if (!isParty) {
+      throw new Error("You are not authorized to view this contract's EMI schedule.");
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        schedule: contract.repaymentSchedule || [],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /contracts/:id/payment-history
+export const getPaymentHistory = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+
+    const contract = await Contract.findById(id);
+    if (!contract) {
+      throw new Error("Contract not found.");
+    }
+
+    // Security: only contract parties can view payment history
+    const isParty =
+      contract.lender.equals(user.id) ||
+      contract.receiver.equals(user.id) ||
+      contract.guarantor.equals(user.id);
+    if (!isParty) {
+      throw new Error("You are not authorized to view this contract's payment history.");
+    }
+
+    const transactions = await Transaction.find({ contract: id })
+      .sort({ createdAt: -1 })
+      .populate("fromUser", "name")
+      .populate("toUser", "name");
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        payments: transactions,
+      },
     });
   } catch (error) {
     next(error);

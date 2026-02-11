@@ -77,7 +77,13 @@ export default function Payments() {
                 </p>
               </div>
             ) : (
-              contracts.map((c) => (
+              contracts.map((c) => {
+                const schedule = c.repaymentSchedule || [];
+                const nextEMI = schedule.find((e) => e.status === "PENDING");
+                const paidCount = schedule.filter((e) => e.status === "PAID").length;
+                const totalCount = schedule.length;
+
+                return (
                 <div
                   key={c._id || c.id}
                   className="bg-[#1a2332]/40 border border-blue-500/10 rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -107,27 +113,50 @@ export default function Payments() {
                           {c.totalAmount?.toLocaleString?.() ?? c.amount}
                         </span>
                       </div>
+                      {totalCount > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="text-xs text-gray-400">
+                            EMI Progress: {paidCount}/{totalCount} paid
+                          </div>
+                          <div className="w-40 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-green-500 rounded-full transition-all"
+                              style={{ width: `${(paidCount / totalCount) * 100}%` }}
+                            />
+                          </div>
+                          {nextEMI && (
+                            <div className="text-xs text-yellow-400">
+                              Next: EMI #{nextEMI.emiNumber} — ₹{nextEMI.amountDue?.toLocaleString()} due {new Date(nextEMI.dueDate).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button
                     className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     onClick={() => handlePay(c._id || c.id)}
-                    disabled={paying === (c._id || c.id)}
+                    disabled={paying === (c._id || c.id) || !nextEMI}
                   >
                     {paying === (c._id || c.id) ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Processing...
                       </>
+                    ) : nextEMI ? (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Pay EMI #{nextEMI.emiNumber}
+                      </>
                     ) : (
                       <>
                         <CreditCard className="w-4 h-4" />
-                        Pay Now
+                        All Paid ✓
                       </>
                     )}
                   </button>
                 </div>
-              ))
+              );})
             )}
           </div>
         )}

@@ -29,13 +29,15 @@ const phonepeClient = StandardCheckoutClient.getInstance(
  * @param {object} user - The user object of the person paying.
  * @param {number} [paymentAmount] - Optional: The specific amount to pay. If not provided, defaults to the contract's principal.
  * @param {string} [paymentType] - Type of payment: 'EMI' or 'DISBURSAL'. Defaults to 'EMI'.
+ * @param {number} [emiNumber] - Optional: The EMI installment number being paid.
  * @returns {string} The redirect URL for the PhonePe checkout page.
  */
 export async function initiatePayment(
   contractId,
   user,
   paymentAmount,
-  paymentType = "EMI"
+  paymentType = "EMI",
+  emiNumber = null
 ) {
   try {
     const contract = await Contract.findById(contractId);
@@ -50,7 +52,7 @@ export async function initiatePayment(
       amountToPay =
         paymentAmount !== undefined ? paymentAmount : contract.principal;
     } else {
-      // For EMI, use the total repayment amount
+      // For EMI, use the provided amount (specific EMI) or fall back to total
       const payableAmount =
         (contract.principal * contract.interestRate) / 100 + contract.principal;
       amountToPay = paymentAmount !== undefined ? paymentAmount : payableAmount;
@@ -66,15 +68,20 @@ export async function initiatePayment(
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
     const redirectUrl = `${frontendUrl}/payment-status?merchantOrderId=${merchantOrderId}&type=${paymentType}`;
 
+    const metaInfo = {
+      contractId: contractId.toString(),
+      payerId: user._id.toString(),
+      paymentType: paymentType,
+    };
+    if (emiNumber !== null) {
+      metaInfo.emiNumber = emiNumber.toString();
+    }
+
     const request = StandardCheckoutPayRequest.builder()
       .merchantOrderId(merchantOrderId)
       .amount(amountInPaisa)
       .redirectUrl(redirectUrl)
-      .metaInfo({
-        contractId: contractId.toString(),
-        payerId: user._id.toString(),
-        paymentType: paymentType,
-      })
+      .metaInfo(metaInfo)
       .build();
 
     const response = await phonepeClient.pay(request);

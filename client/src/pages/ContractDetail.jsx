@@ -17,6 +17,7 @@ export default function ContractDetail() {
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
   const [disbursing, setDisbursing] = useState(false);
+  const [payingEMI, setPayingEMI] = useState(null);
   const [receiverUpi, setReceiverUpi] = useState("");
 
   const loadContract = async () => {
@@ -382,36 +383,10 @@ export default function ContractDetail() {
             )}
 
             {contract.status === "ACTIVE" && (
-              <div className="bg-white/5 border border-white/10 rounded-lg p-6 mb-6">
-                <h3 className="font-semibold text-white mb-4">
-                  Make EMI Payment
-                </h3>
-                <p className="text-sm text-gray-400 mb-4">
-                  Click below to proceed to the payment gateway and make your
-                  EMI payment.
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-300">
+                  💡 Use the <strong>Pay Now</strong> button in the EMI Schedule table below to pay your next installment.
                 </p>
-                <button
-                  onClick={async () => {
-                    try {
-                      const paymentRes = await payments.pay({ contractId: id });
-                      const redirectUrl = paymentRes.data?.data?.redirectUrl;
-                      if (redirectUrl) {
-                        // Redirect to PhonePe payment page
-                        window.location.href = redirectUrl;
-                      } else {
-                        alert("Failed to initiate payment");
-                      }
-                    } catch (err) {
-                      alert(
-                        err.response?.data?.message ||
-                          "Failed to initiate payment"
-                      );
-                    }
-                  }}
-                  className="px-6 py-3 bg-green-500 hover:bg-green-600 rounded-lg text-white font-medium transition-colors"
-                >
-                  Pay EMI
-                </button>
               </div>
             )}
           </>
@@ -572,7 +547,29 @@ export default function ContractDetail() {
           <h2 className="text-xl font-semibold text-white mb-4">
             EMI Schedule
           </h2>
-          <EMIScheduleTable schedule={emiSchedule} />
+          <EMIScheduleTable
+            schedule={emiSchedule}
+            isReceiver={isReceiver}
+            onPayEMI={contract.status === "ACTIVE" ? async (emiNumber) => {
+              setPayingEMI(emiNumber);
+              try {
+                const paymentRes = await payments.pay({ contractId: id });
+                const redirectUrl = paymentRes.data?.data?.redirectUrl;
+                if (redirectUrl) {
+                  window.location.href = redirectUrl;
+                } else {
+                  alert("Failed to initiate payment");
+                }
+              } catch (err) {
+                alert(
+                  err.response?.data?.message || "Failed to initiate payment"
+                );
+              } finally {
+                setPayingEMI(null);
+              }
+            } : undefined}
+            payingEMI={payingEMI}
+          />
         </div>
 
         {/* Payment History */}

@@ -19,9 +19,10 @@ const transactionSchema = new mongoose.Schema(
       required: true,
     },
     amount: { type: Number, required: true },
+    emiNumber: { type: Number },
     status: {
       type: String,
-      enum: ["DISBURSED", "CONFIRMED"],
+      enum: ["DISBURSED", "CONFIRMED", "SUCCESS", "FAILED"],
       default: "DISBURSED",
     },
 

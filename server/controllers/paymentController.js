@@ -27,12 +27,29 @@ export const createPayment = async (req, res, next) => {
       throw new Error("Payments can only be made on active loans.");
     }
 
-    const redirectUrl = await paymentService.initiatePayment(contractId, user);
+    // Find the next pending EMI
+    const nextEMI = contract.repaymentSchedule.find(
+      (emi) => emi.status === "PENDING"
+    );
+
+    if (!nextEMI) {
+      throw new Error("All EMIs have already been paid for this contract.");
+    }
+
+    const redirectUrl = await paymentService.initiatePayment(
+      contractId,
+      user,
+      nextEMI.amountDue,
+      "EMI",
+      nextEMI.emiNumber
+    );
     res.status(200).json({
       status: "success",
-      message: "Payment initiated successfully.",
+      message: `EMI #${nextEMI.emiNumber} payment initiated successfully.`,
       data: {
         redirectUrl,
+        emiNumber: nextEMI.emiNumber,
+        amount: nextEMI.amountDue,
       },
     });
   } catch (error) {
@@ -142,8 +159,81 @@ export const handleCallback = async (req, res, next) => {
           );
         }
       } else {
-        // Handle regular EMI payment
-        settleSuccessfulRepayment(contractId);
+        // Handle EMI payment
+        const emiNumber = payload.metaInfo.emiNumber
+          ? parseInt(payload.metaInfo.emiNumber)
+          : null;
+
+        console.log(
+          `Processing EMI payment for contract: ${contractId}, EMI #${emiNumber}`
+        );
+
+        const contract = await Contract.findById(contractId)
+          .populate("lender")
+          .populate("receiver");
+
+        if (!contract) {
+          console.error("Contract not found:", contractId);
+          return res.status(200).send();
+        }
+
+        if (emiNumber && contract.repaymentSchedule.length > 0) {
+          // Mark the specific EMI as PAID
+          const emi = contract.repaymentSchedule.find(
+            (e) => e.emiNumber === emiNumber
+          );
+
+          if (emi && emi.status === "PENDING") {
+            emi.status = "PAID";
+            emi.paidAt = new Date();
+
+            // Create a transaction record for this EMI payment
+            await Transaction.create({
+              contract: contract._id,
+              fromUser: contract.receiver._id,
+              toUser: contract.lender._id,
+              amount: emi.amountDue,
+              status: "SUCCESS",
+              emiNumber: emiNumber,
+              paymentTransactionId: payload.originalMerchantOrderId,
+            });
+
+            await contract.save();
+
+            console.log(
+              `EMI #${emiNumber} marked as PAID for contract ${contractId}`
+            );
+
+            // Check if ALL EMIs are now paid
+            const allPaid = contract.repaymentSchedule.every(
+              (e) => e.status === "PAID"
+            );
+
+            if (allPaid) {
+              console.log(
+                `All EMIs paid for contract ${contractId}. Settling loan.`
+              );
+              settleSuccessfulRepayment(contractId);
+            } else {
+              const remaining = contract.repaymentSchedule.filter(
+                (e) => e.status === "PENDING"
+              ).length;
+              console.log(
+                `${remaining} EMI(s) remaining for contract ${contractId}`
+              );
+            }
+          } else {
+            console.log(
+              `EMI #${emiNumber} not found or already paid for contract ${contractId}`
+            );
+          }
+        } else {
+          // Fallback: old-style full payment (for contracts without EMI schedule)
+          console.log(
+            `No EMI schedule found, settling full repayment for contract ${contractId}`
+          );
+          settleSuccessfulRepayment(contractId);
+        }
       }
     } else if (eventType === "CHECKOUT_ORDER_FAILED") {
       console.error(
