@@ -11,6 +11,7 @@ const PaymentStatus = () => {
 
   const merchantOrderId = searchParams.get("merchantOrderId");
   const paymentType = searchParams.get("type"); // 'EMI' or 'DISBURSAL'
+  const emiNumber = searchParams.get("emiNumber"); // EMI installment number
 
   // Extract contractId from merchantOrderId (format: TYPE_contractId_suffix)
   const contractId = merchantOrderId?.split("_")[1];
@@ -42,6 +43,7 @@ const PaymentStatus = () => {
             metaInfo: {
               contractId: contractId,
               paymentType: paymentType || "EMI",
+              ...(emiNumber ? { emiNumber: emiNumber } : {}),
             },
             paymentDetails: [{ state: "COMPLETED" }],
           },
@@ -58,6 +60,7 @@ const PaymentStatus = () => {
             metaInfo: {
               contractId: contractId,
               paymentType: paymentType || "EMI",
+              ...(emiNumber ? { emiNumber: emiNumber } : {}),
             },
             paymentDetails: [{ state: "COMPLETED" }],
           },

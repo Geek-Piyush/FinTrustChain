@@ -66,7 +66,10 @@ export async function initiatePayment(
     const uniqueSuffix = randomUUID().slice(0, 8);
     const merchantOrderId = `${paymentType}_${contractId}_${uniqueSuffix}`;
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
-    const redirectUrl = `${frontendUrl}/payment-status?merchantOrderId=${merchantOrderId}&type=${paymentType}`;
+    let redirectUrl = `${frontendUrl}/payment-status?merchantOrderId=${merchantOrderId}&type=${paymentType}`;
+    if (emiNumber !== null) {
+      redirectUrl += `&emiNumber=${emiNumber}`;
+    }
 
     const metaInfo = {
       contractId: contractId.toString(),

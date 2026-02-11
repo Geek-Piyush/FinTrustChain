@@ -3,6 +3,7 @@ import User from "../models/userModel.js";
 import LoanRequest from "../models/loanRequestModel.js";
 import * as trustIndexService from "./trustIndexService.js";
 import * as userService from "./userService.js";
+import { createClosurePDF } from "./pdfService.js";
 
 export async function settleSuccessfulRepayment(contractId) {
   try {
@@ -91,6 +92,47 @@ export async function settleSuccessfulRepayment(contractId) {
     // --- Finalize Contract and Loan Request Status ---
     contract.status = "REPAID";
     await contract.save();
+
+    // --- Generate Closure Agreement PDF (overwrites the contract PDF) ---
+    try {
+      const lender = await User.findById(contract.lender);
+      const closureData = {
+        contractId: contract.contractId || contract._id.toString(),
+        dateISO: new Date().toISOString().split("T")[0],
+        loanAmountDisplay: `₹${contract.principal.toLocaleString("en-IN")}`,
+        interestRateDisplay: `${contract.interestRate}%.`,
+        repaymentPeriodDisplay: `${contract.tenorDays} days`,
+        startDateDisplay: contract.startDate
+          ? new Date(contract.startDate).toLocaleDateString("en-GB")
+          : "N/A",
+        endDateDisplay: contract.endDate
+          ? new Date(contract.endDate).toLocaleDateString("en-GB")
+          : "N/A",
+        receiver: {
+          name: receiver.name,
+          tiAtSigning: receiver.trustIndex,
+        },
+        guarantor: {
+          name: guarantor ? guarantor.name : "N/A",
+          tiAtSigning: guarantor ? guarantor.trustIndex : 0,
+        },
+        lender: {
+          name: lender ? lender.name : "N/A",
+          tiAtSigning: lender ? lender.trustIndex : 0,
+        },
+      };
+
+      await createClosurePDF(closureData, contract.pdfFilename);
+      console.log(
+        `Closure Agreement PDF generated and replaced contract PDF: ${contract.pdfFilename}`
+      );
+    } catch (pdfError) {
+      // PDF generation failure should not break the settlement flow
+      console.error(
+        `Failed to generate Closure Agreement PDF for contract ${contractId}:`,
+        pdfError
+      );
+    }
 
     await LoanRequest.findByIdAndUpdate(contract.loanRequest, {
       status: "FULFILLED",

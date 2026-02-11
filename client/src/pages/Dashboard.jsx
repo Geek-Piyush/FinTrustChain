@@ -110,7 +110,7 @@ export default function Dashboard() {
 
   const handleGuarantorResponse = async (requestId, accepted) => {
     try {
-      await guarantorRequests.respond(requestId, { accepted });
+      await guarantorRequests.respond(requestId, { status: accepted ? "ACCEPTED" : "DECLINED" });
       loadDashboard();
     } catch (err) {
       alert(err.response?.data?.message || "Failed to respond to request");
