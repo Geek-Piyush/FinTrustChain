@@ -17,6 +17,7 @@ import ContractDetail from "./pages/ContractDetail";
 import Payments from "./pages/Payments";
 import PaymentStatus from "./pages/PaymentStatus";
 import Notifications from "./pages/Notifications";
+import Debts from "./pages/Debts";
 import NotFound from "./pages/NotFound";
 import Contact from "./pages/Contact";
 import About from "./pages/About";
@@ -59,6 +60,7 @@ function App() {
           <Route path="/contract-viewer/:id" element={<ContractViewer />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/debts" element={<Debts />} />
         </Route>
 
         {/* Public routes */}

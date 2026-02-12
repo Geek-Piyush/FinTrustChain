@@ -47,6 +47,8 @@ const contractSchema = new mongoose.Schema(
       lender: { type: Boolean, default: false },
     },
     pdfFilename: { type: String },
+    guarantorLiabilityAmount: { type: Number, default: 0 },
+    guarantorLiabilityPaid: { type: Boolean, default: false },
     repaymentSchedule: [
       {
         emiNumber: { type: Number, required: true },
@@ -147,6 +149,7 @@ contractSchema.post("save", async function (doc, next) {
           link
         );
       } else if (doc.status === "DEFAULT") {
+        const liabilityAmount = doc.guarantorLiabilityAmount || Math.round(doc.principal * 0.5);
         await createNotification(
           lender,
           `Urgent: The loan to ${receiver.name} has defaulted.`,
@@ -155,12 +158,12 @@ contractSchema.post("save", async function (doc, next) {
         await createNotification(
           receiver,
           `Your loan from ${lender.name} has defaulted. Your TrustIndex has been severely impacted.`,
-          link
+          `/debts`
         );
         await createNotification(
           guarantor,
-          `URGENT: The loan for ${receiver.name} has defaulted. You are now liable for 50% of the principal.`,
-          link
+          `URGENT: The loan for ${receiver.name} has defaulted. You are liable for ₹${liabilityAmount.toLocaleString("en-IN")}. Pay now to settle your liability.`,
+          `/debts`
         );
       }
     }

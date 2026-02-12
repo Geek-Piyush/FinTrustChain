@@ -158,6 +158,57 @@ export const handleCallback = async (req, res, next) => {
             `Contract ${contractId} is in status ${contract.status}, skipping disbursal processing`
           );
         }
+      } else if (paymentType === "GUARANTOR_PAY") {
+        // Handle guarantor liability payment
+        console.log(
+          `Processing GUARANTOR_PAY for contract: ${contractId}`
+        );
+
+        const contract = await Contract.findById(contractId)
+          .populate("lender")
+          .populate("receiver")
+          .populate("guarantor");
+
+        if (!contract) {
+          console.error("Contract not found:", contractId);
+          return res.status(200).send();
+        }
+
+        if (contract.status !== "DEFAULT") {
+          console.log(
+            `Contract ${contractId} is not in DEFAULT status, skipping guarantor payment`
+          );
+          return res.status(200).send();
+        }
+
+        if (contract.guarantorLiabilityPaid) {
+          console.log(
+            `Guarantor liability already paid for contract ${contractId}`
+          );
+          return res.status(200).send();
+        }
+
+        // Mark liability as paid
+        contract.guarantorLiabilityPaid = true;
+        await contract.save();
+
+        const liabilityAmount =
+          contract.guarantorLiabilityAmount ||
+          Math.round(contract.principal * 0.5);
+
+        // Create a transaction record
+        await Transaction.create({
+          contract: contract._id,
+          fromUser: contract.guarantor._id,
+          toUser: contract.lender._id,
+          amount: liabilityAmount,
+          status: "GUARANTOR_SETTLEMENT",
+          paymentTransactionId: payload.originalMerchantOrderId,
+        });
+
+        console.log(
+          `Guarantor liability settled for contract ${contractId}. Amount: ${liabilityAmount}`
+        );
       } else {
         // Handle EMI payment
         const emiNumber = payload.metaInfo.emiNumber

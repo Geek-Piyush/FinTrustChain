@@ -311,14 +311,22 @@ export const initiateGuarantorPayment = async (req, res, next) => {
       throw new Error("This contract is not in a defaulted state.");
     }
 
-    // The guarantor is liable for 50% of the principal
-    const guarantorLiability = contract.principal * 0.5;
+    // The guarantor is liable for 50% of the remaining unpaid amount
+    let guarantorLiability = contract.guarantorLiabilityAmount;
+    if (!guarantorLiability) {
+      // Fallback: calculate from unpaid EMIs
+      const remaining = contract.repaymentSchedule
+        .filter((emi) => emi.status !== "PAID")
+        .reduce((sum, emi) => sum + emi.amountDue, 0);
+      guarantorLiability = Math.round(remaining * 0.5);
+    }
 
     // We reuse our existing payment service, passing the guarantor as the user and the specific liability amount.
     const redirectUrl = await paymentService.initiatePayment(
       id,
       guarantor,
-      guarantorLiability
+      guarantorLiability,
+      "GUARANTOR_PAY"
     );
 
     res.status(200).json({

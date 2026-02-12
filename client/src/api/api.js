@@ -144,6 +144,12 @@ export const notifications = {
   create: payload => api.post(`/notifications`, payload),
 };
 
+// Debts
+export const debts = {
+  getMyDebts: () => api.get(`/debts/my`),
+  getSummary: () => api.get(`/debts/summary`),
+};
+
 // Lender-specific endpoints
 export const lender = {
   getStats: () => api.get(`/lender/stats`),

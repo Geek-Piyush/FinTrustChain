@@ -3,7 +3,7 @@ import User from "../models/userModel.js";
 import LoanRequest from "../models/loanRequestModel.js";
 import * as trustIndexService from "./trustIndexService.js";
 import * as userService from "./userService.js";
-import { createClosurePDF } from "./pdfService.js";
+import { createClosurePDF, applySignatureToPDF } from "./pdfService.js";
 
 export async function settleSuccessfulRepayment(contractId) {
   try {
@@ -97,7 +97,7 @@ export async function settleSuccessfulRepayment(contractId) {
     try {
       const lender = await User.findById(contract.lender);
       const closureData = {
-        contractId: contract.contractId || contract._id.toString(),
+        contractId: contract._id.toString().slice(-8).toUpperCase(),
         dateISO: new Date().toISOString().split("T")[0],
         loanAmountDisplay: `₹${contract.principal.toLocaleString("en-IN")}`,
         interestRateDisplay: `${contract.interestRate}%.`,
@@ -123,8 +123,20 @@ export async function settleSuccessfulRepayment(contractId) {
       };
 
       await createClosurePDF(closureData, contract.pdfFilename);
+
+      // Re-apply all signatures to the closure PDF
+      if (receiver.eSign?.filename) {
+        await applySignatureToPDF(contract.pdfFilename, receiver, "receiver");
+      }
+      if (guarantor?.eSign?.filename) {
+        await applySignatureToPDF(contract.pdfFilename, guarantor, "guarantor");
+      }
+      if (lender?.eSign?.filename) {
+        await applySignatureToPDF(contract.pdfFilename, lender, "lender");
+      }
+
       console.log(
-        `Closure Agreement PDF generated and replaced contract PDF: ${contract.pdfFilename}`
+        `Closure Agreement PDF generated with signatures: ${contract.pdfFilename}`
       );
     } catch (pdfError) {
       // PDF generation failure should not break the settlement flow
@@ -225,6 +237,14 @@ export async function settleDefaultedLoan(contract) {
 
     // --- Finalize Contract Status ---
     contract.status = "DEFAULT";
+
+    // Calculate guarantor liability as 50% of REMAINING unpaid EMIs,
+    // not 50% of the total principal (receiver may have paid some installments)
+    const remainingAmount = contract.repaymentSchedule
+      .filter((emi) => emi.status !== "PAID")
+      .reduce((sum, emi) => sum + emi.amountDue, 0);
+    contract.guarantorLiabilityAmount = Math.round(remainingAmount * 0.5);
+    contract.guarantorLiabilityPaid = false;
     await contract.save();
 
     console.log(
