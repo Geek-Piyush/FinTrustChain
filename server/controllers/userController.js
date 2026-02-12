@@ -1,5 +1,6 @@
 import User from "../models/userModel.js";
-import LoanBrochure from "../models/loanBrochureModel.js"; // 1. Import the LoanBrochure model
+import LoanBrochure from "../models/loanBrochureModel.js";
+import Contract from "../models/contractModel.js";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";
@@ -149,12 +150,23 @@ export const toggleCurrentUserRole = async (req, res, next) => {
 
     // If user is a RECEIVER and wants to become a LENDER
     if (user.currentRole === "RECEIVER" && newRole === "LENDER") {
-      // Placeholder for future logic: check for active loans as a borrower
-      const hasActiveLoanAsReceiver = false; // Replace with real check on 'Contract' model
-      if (hasActiveLoanAsReceiver) {
+      // Check for any active/pending contracts where this user is the receiver
+      const activeContract = await Contract.findOne({
+        receiver: user.id,
+        status: {
+          $in: [
+            "AWAITING_SIGNATURES",
+            "AWAITING_DISBURSAL",
+            "AWAITING_RECEIPT_CONFIRMATION",
+            "ACTIVE",
+            "DEFAULT",
+          ],
+        },
+      });
+      if (activeContract) {
         return next(
           new Error(
-            "You cannot switch to LENDER while you have an active loan."
+            "You cannot switch to LENDER while you have an active or defaulted loan as a borrower. Please settle all outstanding loans first."
           )
         );
       }
