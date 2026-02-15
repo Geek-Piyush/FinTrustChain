@@ -2,6 +2,10 @@ import cron from "node-cron";
 import Contract from "../models/contractModel.js";
 import User from "../models/userModel.js";
 import { settleDefaultedLoan } from "../services/loanSettlementServices.js";
+import * as trustIndexService from "../services/trustIndexService.js";
+import * as userService from "../services/userService.js";
+import { createNotification } from "../services/notificationService.js";
+import { sendOverdueEMIEmail } from "../utils/email.js";
 
 const checkOverdueConfirmations = async () => {
   console.log(
@@ -64,14 +68,140 @@ export const checkLoanDefaults = async () => {
   }
 };
 
+/**
+ * Checks for individual EMIs whose dueDate has passed but are still PENDING.
+ * Marks them as OVERDUE and applies a ONE-TIME progressive TI penalty:
+ *   - 1st consecutive overdue: 25% of full-default TI loss
+ *   - 2nd consecutive overdue: 30%
+ *   - 3rd consecutive overdue: 35%  ...and so on (+5% each)
+ *
+ * The penalty is applied EXACTLY ONCE per EMI (tracked by penaltyApplied flag).
+ * When the receiver pays an EMI, consecutiveOverdueCount resets to 0 and
+ * the penalty cycle restarts at 25%.
+ *
+ * This does NOT default the loan — default only happens when endDate passes.
+ */
+export const checkOverdueEMIs = async () => {
+  console.log("Running scheduled job: Checking for overdue EMIs...");
+  try {
+    const now = new Date();
+
+    // Find ACTIVE contracts that have at least one EMI past due and still PENDING
+    const contracts = await Contract.find({
+      status: "ACTIVE",
+      "repaymentSchedule.dueDate": { $lt: now },
+      "repaymentSchedule.status": "PENDING",
+    });
+
+    if (contracts.length === 0) {
+      console.log("No overdue EMIs found. Job finished.");
+      return;
+    }
+
+    let totalMarked = 0;
+
+    for (const contract of contracts) {
+      // Find EMIs that are PENDING, past due, and haven't been penalized yet
+      const newlyOverdueEMIs = contract.repaymentSchedule.filter(
+        (emi) =>
+          emi.status === "PENDING" &&
+          new Date(emi.dueDate) < now &&
+          !emi.penaltyApplied
+      );
+
+      if (newlyOverdueEMIs.length === 0) continue;
+
+      const receiver = await User.findById(contract.receiver);
+      if (!receiver) continue;
+
+      // Sort by EMI number to process in order (important for progressive penalty)
+      newlyOverdueEMIs.sort((a, b) => a.emiNumber - b.emiNumber);
+
+      for (const emi of newlyOverdueEMIs) {
+        // Increment consecutive overdue counter
+        contract.consecutiveOverdueCount =
+          (contract.consecutiveOverdueCount || 0) + 1;
+
+        // Progressive penalty: 25% for 1st, 30% for 2nd, 35% for 3rd, etc.
+        const penaltyPercent =
+          0.25 + (contract.consecutiveOverdueCount - 1) * 0.05;
+
+        // Calculate the base default loss (what they'd lose on full default)
+        const fullDefaultLoss = trustIndexService.getLoanDefaultLoss(
+          receiver.trustIndex,
+          contract.principal,
+          0
+        );
+
+        const deduction = Math.max(
+          1,
+          Math.min(
+            Math.floor(fullDefaultLoss * penaltyPercent),
+            receiver.trustIndex
+          )
+        );
+
+        // Mark overdue + flag as penalized (won't fire again)
+        emi.status = "OVERDUE";
+        emi.penaltyApplied = true;
+        totalMarked++;
+
+        // Apply TI deduction
+        await userService.updateTrustIndex(
+          receiver,
+          -deduction,
+          `Overdue EMI #${emi.emiNumber} on Contract ${contract._id}`
+        );
+
+        const percentLabel = Math.round(penaltyPercent * 100);
+
+        // Notify with exact numbers
+        await createNotification(
+          receiver,
+          `⚠️ EMI #${emi.emiNumber} is overdue! ${deduction} points (${percentLabel}% penalty) have been deducted from your TrustIndex (now ${receiver.trustIndex}). Pay your dues to stop further penalties on upcoming EMIs.`,
+          `/debts`
+        );
+
+        // Send email notification
+        await sendOverdueEMIEmail(
+          receiver,
+          contract.contractId || contract._id,
+          emi.emiNumber,
+          deduction,
+          receiver.trustIndex,
+          percentLabel
+        );
+
+        console.log(
+          `EMI #${emi.emiNumber} on Contract ${contract._id} → OVERDUE. ` +
+            `Penalty: -${deduction} TI (${percentLabel}%, consecutive #${contract.consecutiveOverdueCount}). ` +
+            `Receiver: ${receiver.name}, TI: ${receiver.trustIndex}`
+        );
+      }
+
+      await contract.save();
+    }
+
+    console.log(
+      `Overdue EMI check complete. ${totalMarked} EMI(s) newly marked OVERDUE.`
+    );
+  } catch (error) {
+    console.error("Error during overdue EMI check:", error);
+  }
+};
+
 export const startScheduler = () => {
   // Runs at minute 0 of every hour
   cron.schedule("0 * * * *", checkOverdueConfirmations);
 
-  // Runs once a day at midnight
+  // Runs once a day at midnight — checks entire tenure expiry → DEFAULT
   cron.schedule("0 0 * * *", checkLoanDefaults);
 
+  // Runs once a day at 6 AM — checks individual EMI due dates → OVERDUE
+  // Idempotent: penaltyApplied flag ensures each EMI is penalized only once
+  cron.schedule("0 6 * * *", checkOverdueEMIs);
+
   console.log(
-    "Scheduler started. Jobs for overdue confirmations and loan defaults are running."
+    "Scheduler started. Jobs for overdue confirmations, loan defaults, and overdue EMIs are running."
   );
 };

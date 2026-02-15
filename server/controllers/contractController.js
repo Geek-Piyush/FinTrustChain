@@ -9,6 +9,7 @@ import multer from "multer";
 import path from "path";
 import * as paymentService from "../services/paymentService.js";
 import { generateEMISchedule } from "../services/emiService.js";
+import { sendContractReadyEmail } from "../utils/email.js";
 
 // --- MULTER SETUP for Payment Proof ---
 const proofStorage = multer.diskStorage({
@@ -68,6 +69,7 @@ export const createContract = async loanRequestId => {
     const newContract = await Contract.create(
       [
         {
+          contractId,
           loanRequest: loanRequestId,
           lender: lender.id,
           receiver: receiver.id,
@@ -84,6 +86,12 @@ export const createContract = async loanRequestId => {
 
     await session.commitTransaction();
     console.log(`Contract ${newContract[0].id} created. Ready for signatures.`);
+
+    // Email all parties that the contract is ready
+    await sendContractReadyEmail(receiver, contractId);
+    await sendContractReadyEmail(lender, contractId);
+    await sendContractReadyEmail(guarantor, contractId);
+
     return newContract[0];
   } catch (error) {
     await session.abortTransaction();
@@ -528,10 +536,13 @@ export const getContractPDF = async (req, res, next) => {
     }
 
     // Set response headers for PDF download
+    const downloadName = contract.contractId
+      ? `${contract.contractId}.pdf`
+      : contract.pdfFilename;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${contract.pdfFilename}"`
+      `attachment; filename="${downloadName}"`
     );
 
     // Stream the file to the client

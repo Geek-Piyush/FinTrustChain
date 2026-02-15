@@ -3,6 +3,7 @@ import { settleSuccessfulRepayment } from "../services/loanSettlementServices.js
 import { phonepeClient } from "../services/paymentService.js";
 import Contract from "../models/contractModel.js";
 import Transaction from "../models/transactionModel.js";
+import { sendPaymentReceivedEmail } from "../utils/email.js";
 
 // POST /payments/pay
 export const createPayment = async (req, res, next) => {
@@ -234,9 +235,13 @@ export const handleCallback = async (req, res, next) => {
             (e) => e.emiNumber === emiNumber
           );
 
-          if (emi && emi.status === "PENDING") {
+          if (emi && (emi.status === "PENDING" || emi.status === "OVERDUE")) {
             emi.status = "PAID";
             emi.paidAt = new Date();
+
+            // Reset consecutive overdue counter — the penalty cycle
+            // restarts from 25% for the next overdue EMI
+            contract.consecutiveOverdueCount = 0;
 
             // Create a transaction record for this EMI payment
             await Transaction.create({
@@ -252,8 +257,18 @@ export const handleCallback = async (req, res, next) => {
             await contract.save();
 
             console.log(
-              `EMI #${emiNumber} marked as PAID for contract ${contractId}`
+              `EMI #${emiNumber} marked as PAID for contract ${contractId}. Overdue counter reset.`
             );
+
+            // Email lender about the received payment
+            if (contract.lender?.email) {
+              await sendPaymentReceivedEmail(
+                contract.lender,
+                contract.contractId || contractId,
+                emiNumber,
+                emi.amountDue
+              );
+            }
 
             // Check if ALL EMIs are now paid
             const allPaid = contract.repaymentSchedule.every(
@@ -267,7 +282,7 @@ export const handleCallback = async (req, res, next) => {
               settleSuccessfulRepayment(contractId);
             } else {
               const remaining = contract.repaymentSchedule.filter(
-                (e) => e.status === "PENDING"
+                (e) => e.status === "PENDING" || e.status === "OVERDUE"
               ).length;
               console.log(
                 `${remaining} EMI(s) remaining for contract ${contractId}`

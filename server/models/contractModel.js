@@ -3,6 +3,7 @@ import { createNotification } from "../services/notificationService.js";
 
 const contractSchema = new mongoose.Schema(
   {
+    contractId: { type: String, unique: true, sparse: true },
     loanRequest: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LoanRequest",
@@ -49,6 +50,7 @@ const contractSchema = new mongoose.Schema(
     pdfFilename: { type: String },
     guarantorLiabilityAmount: { type: Number, default: 0 },
     guarantorLiabilityPaid: { type: Boolean, default: false },
+    consecutiveOverdueCount: { type: Number, default: 0 },
     repaymentSchedule: [
       {
         emiNumber: { type: Number, required: true },
@@ -62,6 +64,7 @@ const contractSchema = new mongoose.Schema(
           default: "PENDING",
         },
         paidAt: Date,
+        penaltyApplied: { type: Boolean, default: false },
       },
     ],
   },

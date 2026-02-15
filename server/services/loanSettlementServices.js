@@ -4,6 +4,7 @@ import LoanRequest from "../models/loanRequestModel.js";
 import * as trustIndexService from "./trustIndexService.js";
 import * as userService from "./userService.js";
 import { createClosurePDF, applySignatureToPDF } from "./pdfService.js";
+import { sendLoanDefaultEmail } from "../utils/email.js";
 
 export async function settleSuccessfulRepayment(contractId) {
   try {
@@ -250,6 +251,17 @@ export async function settleDefaultedLoan(contract) {
     console.log(
       `Default settlement for Contract ID: ${contract._id} completed successfully.`
     );
+
+    // Email all affected parties
+    const cid = contract.contractId || contract._id;
+    await sendLoanDefaultEmail(receiver, cid, receiverTILoss);
+    if (guarantor) {
+      await sendLoanDefaultEmail(
+        guarantor,
+        cid,
+        trustIndexService.getGuarantorImpact(receiverTILoss)
+      );
+    }
   } catch (error) {
     console.error(
       `Error during default settlement for Contract ID ${contract._id}:`,

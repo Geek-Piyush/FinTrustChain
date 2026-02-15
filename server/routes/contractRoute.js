@@ -14,7 +14,7 @@ import {
   getPaymentHistory,
 } from "../controllers/contractController.js";
 import { protect } from "../middlewares/authMiddleware.js";
-import { checkLoanDefaults } from "../utils/scheduler.js";
+import { checkLoanDefaults, checkOverdueEMIs } from "../utils/scheduler.js";
 const router = express.Router();
 
 // All contract routes require a user to be logged in.
@@ -48,6 +48,12 @@ router.post("/admin/trigger-default-check", async (req, res) => {
   console.log("--- ADMIN: Manually triggering default check ---");
   await checkLoanDefaults();
   res.status(200).send("Default check triggered successfully.");
+});
+
+router.post("/admin/trigger-overdue-emi-check", async (req, res) => {
+  console.log("--- ADMIN: Manually triggering overdue EMI check ---");
+  await checkOverdueEMIs();
+  res.status(200).send("Overdue EMI check triggered successfully.");
 });
 
 // Add the new route for the receiver to view the proof

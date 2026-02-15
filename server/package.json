@@ -24,7 +24,7 @@
     "mongoose": "^8.17.1",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.5",
+    "nodemailer": "^7.0.13",
     "pdf-lib": "^1.17.1",
     "pg-sdk-node": "https://phonepe.mycloudrepo.io/public/repositories/phonepe-pg-sdk-node/releases/v2/phonepe-pg-sdk-node.tgz",
     "sharp": "^0.34.3",
