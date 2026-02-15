@@ -1,48 +1,33 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
-// ── Transporter Setup ──
-// Tries Gmail SMTP first. If it fails (e.g. on Render which blocks
-// SMTP ports), emails are silently skipped — the app never crashes.
-let transporter;
+// ── Resend Setup ──
+// Uses HTTP API — works on Render, Vercel, and every platform
+// (no SMTP ports needed)
+let resend;
 let emailEnabled = false;
 
-async function initTransporter() {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+function getResend() {
+  if (resend) return resend;
 
-  if (!user || !pass) {
-    console.warn(
-      "⚠️  GMAIL_USER or GMAIL_APP_PASSWORD not set — emails disabled"
-    );
-    return;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("⚠️  RESEND_API_KEY not set — emails disabled");
+    return null;
   }
 
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass },
-    // Connection timeout — fail fast on environments that block SMTP
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
-
-  try {
-    await transporter.verify();
-    emailEnabled = true;
-    console.log("✅ Email service ready (Gmail SMTP)");
-  } catch (error) {
-    emailEnabled = false;
-    console.warn(
-      `⚠️  Gmail SMTP unavailable (${error.message}). Emails will be skipped.`
-    );
-    console.warn(
-      "   This is normal on Render/Vercel which block outbound SMTP."
-    );
-  }
+  resend = new Resend(apiKey);
+  emailEnabled = true;
+  console.log("✅ Email service ready (Resend HTTP API)");
+  return resend;
 }
 
-// Initialize on import (non-blocking)
-initTransporter();
+// Initialize on import
+getResend();
+
+// Resend free tier uses onboarding@resend.dev as the sender
+// Once you verify a domain, you can use your own FROM address
+const FROM_ADDRESS =
+  process.env.EMAIL_FROM || "FinTrustChain <onboarding@resend.dev>";
 
 // ── HTML wrapper shared by all email types ──
 function wrapHTML(title, bodyContent) {
@@ -89,17 +74,23 @@ function wrapHTML(title, bodyContent) {
 
 // ── Core send function ──
 async function sendEmail(to, subject, textBody, htmlBody) {
-  if (!emailEnabled || !transporter) return;
+  if (!emailEnabled || !resend) return;
 
   try {
-    const info = await transporter.sendMail({
-      from: `"FinTrustChain" <${process.env.GMAIL_USER}>`,
-      to,
+    const { data, error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: [to],
       subject,
       text: textBody,
       html: htmlBody,
     });
-    console.log(`✅ Email sent to ${to} (${subject}) [${info.messageId}]`);
+
+    if (error) {
+      console.error(`❌ Email to ${to} failed:`, error.message);
+      return;
+    }
+
+    console.log(`✅ Email sent to ${to} (${subject}) [${data.id}]`);
   } catch (error) {
     // Email failures should NEVER crash the app
     console.error(`❌ Email to ${to} failed: ${error.message}`);
