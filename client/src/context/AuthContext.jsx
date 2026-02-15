@@ -90,8 +90,9 @@ export function AuthProvider({ children }) {
       const me = await usersApi.me();
       const data = me?.data?.data || me?.data;
       const u = data?.user || data;
-      setUser(u?.user || u);
-      return { ok: true };
+      const resolved = u?.user || u;
+      setUser(resolved);
+      return { ok: true, user: resolved };
     } catch (err) {
       return { ok: false, error: err };
     }

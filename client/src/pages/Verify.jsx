@@ -12,19 +12,28 @@ export default function Verify() {
   const checkVerified = async () => {
     setChecking(true);
     try {
-      await new Promise((r) => setTimeout(r, 300));
       const token = localStorage.getItem("token");
       if (!token) {
         toast.error("No session token found. Please log in.");
         nav("/login");
         return;
       }
-      await refreshUser();
-      toast.success("Verification status checked. Redirecting...");
-      nav("/dashboard");
+
+      const result = await refreshUser();
+      const updatedUser = result?.user;
+
+      // Actually check the verification status from the server
+      if (updatedUser?.isEmailVerified) {
+        toast.success("Email verified! Redirecting to dashboard...");
+        nav("/dashboard");
+      } else {
+        toast.error(
+          "Your email is not verified yet. Please click the verification link in your inbox."
+        );
+      }
     } catch {
       toast.error(
-        "Still not verified. Check your email for the verification link."
+        "Could not check verification status. Please try again."
       );
     } finally {
       setChecking(false);

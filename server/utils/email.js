@@ -1,33 +1,52 @@
 import nodemailer from "nodemailer";
 
-// Create a reusable transporter (initialized once)
+// ── Transporter Setup ──
+// Tries Gmail SMTP first. If it fails (e.g. on Render which blocks
+// SMTP ports), emails are silently skipped — the app never crashes.
 let transporter;
+let emailEnabled = false;
 
-function getTransporter() {
-  if (transporter) return transporter;
-
+async function initTransporter() {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
 
   if (!user || !pass) {
     console.warn(
-      "⚠️  GMAIL_USER or GMAIL_APP_PASSWORD not set — emails will be skipped"
+      "⚠️  GMAIL_USER or GMAIL_APP_PASSWORD not set — emails disabled"
     );
-    return null;
+    return;
   }
 
   transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user, pass },
+    // Connection timeout — fail fast on environments that block SMTP
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
-  return transporter;
+  try {
+    await transporter.verify();
+    emailEnabled = true;
+    console.log("✅ Email service ready (Gmail SMTP)");
+  } catch (error) {
+    emailEnabled = false;
+    console.warn(
+      `⚠️  Gmail SMTP unavailable (${error.message}). Emails will be skipped.`
+    );
+    console.warn(
+      "   This is normal on Render/Vercel which block outbound SMTP."
+    );
+  }
 }
+
+// Initialize on import (non-blocking)
+initTransporter();
 
 // ── HTML wrapper shared by all email types ──
 function wrapHTML(title, bodyContent) {
   const primary = "#5170ff";
-  const text = "#545454";
   const bg = "#ffffff";
   const year = new Date().getFullYear();
 
@@ -70,11 +89,10 @@ function wrapHTML(title, bodyContent) {
 
 // ── Core send function ──
 async function sendEmail(to, subject, textBody, htmlBody) {
-  const t = getTransporter();
-  if (!t) return; // silently skip if not configured
+  if (!emailEnabled || !transporter) return;
 
   try {
-    const info = await t.sendMail({
+    const info = await transporter.sendMail({
       from: `"FinTrustChain" <${process.env.GMAIL_USER}>`,
       to,
       subject,
@@ -89,7 +107,7 @@ async function sendEmail(to, subject, textBody, htmlBody) {
 }
 
 // ═══════════════════════════════════════════════
-//  Public Email Class (same API as before)
+//  Public Email Class (same API for verification)
 // ═══════════════════════════════════════════════
 
 export default class Email {
@@ -100,7 +118,6 @@ export default class Email {
     this.userName = user.name;
   }
 
-  // ── Email Verification (existing) ──
   async sendVerificationEmail() {
     const subject = "Verify Your Email Address";
     const primary = "#5170ff";
@@ -139,12 +156,8 @@ export default class Email {
 
 // ═══════════════════════════════════════════════
 //  Standalone notification email functions
-//  (called from services without needing a URL)
 // ═══════════════════════════════════════════════
 
-/**
- * Send an email when a contract is ready for signatures.
- */
 export async function sendContractReadyEmail(user, contractId) {
   const name = user.name.split(" ")[0];
   const subject = `📝 Contract ${contractId} is ready for your signature`;
@@ -160,9 +173,6 @@ export async function sendContractReadyEmail(user, contractId) {
   await sendEmail(user.email, subject, text, wrapHTML(subject, body));
 }
 
-/**
- * Send an email when an EMI payment is received.
- */
 export async function sendPaymentReceivedEmail(
   user,
   contractId,
@@ -183,9 +193,6 @@ export async function sendPaymentReceivedEmail(
   await sendEmail(user.email, subject, text, wrapHTML(subject, body));
 }
 
-/**
- * Send an email when an EMI is overdue and TI is deducted.
- */
 export async function sendOverdueEMIEmail(
   user,
   contractId,
@@ -210,9 +217,6 @@ export async function sendOverdueEMIEmail(
   await sendEmail(user.email, subject, text, wrapHTML(subject, body));
 }
 
-/**
- * Send an email when a loan defaults.
- */
 export async function sendLoanDefaultEmail(user, contractId, tiLoss) {
   const name = user.name.split(" ")[0];
   const subject = `🔴 Loan Default — Contract ${contractId || "N/A"}`;
@@ -230,9 +234,6 @@ export async function sendLoanDefaultEmail(user, contractId, tiLoss) {
   await sendEmail(user.email, subject, text, wrapHTML(subject, body));
 }
 
-/**
- * Send a generic notification email (used as a catch-all).
- */
 export async function sendNotificationEmail(user, subject, message) {
   const name = user.name.split(" ")[0];
 
