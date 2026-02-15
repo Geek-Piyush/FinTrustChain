@@ -4,7 +4,6 @@ import { Resend } from "resend";
 // Uses HTTP API — works on Render, Vercel, and every platform
 // (no SMTP ports needed)
 let resend;
-let emailEnabled = false;
 
 function getResend() {
   if (resend) return resend;
@@ -16,18 +15,43 @@ function getResend() {
   }
 
   resend = new Resend(apiKey);
-  emailEnabled = true;
   console.log("✅ Email service ready (Resend HTTP API)");
   return resend;
 }
-
-// Initialize on import
-getResend();
 
 // Resend free tier uses onboarding@resend.dev as the sender
 // Once you verify a domain, you can use your own FROM address
 const FROM_ADDRESS =
   process.env.EMAIL_FROM || "FinTrustChain <onboarding@resend.dev>";
+
+// ── Core send function ──
+async function sendEmail(to, subject, textBody, htmlBody) {
+  const client = getResend();
+  if (!client) {
+    console.warn(`⚠️  Email skipped (no API key): "${subject}" → ${to}`);
+    return;
+  }
+
+  try {
+    const { data, error } = await client.emails.send({
+      from: FROM_ADDRESS,
+      to: [to],
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    if (error) {
+      console.error(`❌ Email to ${to} failed:`, error.message);
+      return;
+    }
+
+    console.log(`✅ Email sent to ${to} (${subject}) [${data.id}]`);
+  } catch (error) {
+    // Email failures should NEVER crash the app
+    console.error(`❌ Email to ${to} failed: ${error.message}`);
+  }
+}
 
 // ── HTML wrapper shared by all email types ──
 function wrapHTML(title, bodyContent) {
@@ -72,30 +96,6 @@ function wrapHTML(title, bodyContent) {
 </html>`;
 }
 
-// ── Core send function ──
-async function sendEmail(to, subject, textBody, htmlBody) {
-  if (!emailEnabled || !resend) return;
-
-  try {
-    const { data, error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: [to],
-      subject,
-      text: textBody,
-      html: htmlBody,
-    });
-
-    if (error) {
-      console.error(`❌ Email to ${to} failed:`, error.message);
-      return;
-    }
-
-    console.log(`✅ Email sent to ${to} (${subject}) [${data.id}]`);
-  } catch (error) {
-    // Email failures should NEVER crash the app
-    console.error(`❌ Email to ${to} failed: ${error.message}`);
-  }
-}
 
 // ═══════════════════════════════════════════════
 //  Public Email Class (same API for verification)
