@@ -22,8 +22,13 @@ export default function Verify() {
       const result = await refreshUser();
       const updatedUser = result?.user;
 
-      // Actually check the verification status from the server
-      if (updatedUser?.isEmailVerified) {
+      // Check verification status — API returns verification.emailVerified
+      const isVerified =
+        updatedUser?.isEmailVerified ||
+        updatedUser?.verification?.emailVerified ||
+        updatedUser?.emailVerified;
+
+      if (isVerified) {
         toast.success("Email verified! Redirecting to dashboard...");
         nav("/dashboard");
       } else {
