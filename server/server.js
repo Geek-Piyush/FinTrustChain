@@ -19,6 +19,7 @@ import paymentRoutes from "./routes/paymentRoute.js";
 import notificationRoutes from "./routes/notificationRoute.js";
 import dashboard from "./routes/dashboardRoute.js";
 import debtRoutes from "./routes/debtRoute.js";
+import supportRoutes from "./routes/supportRoute.js";
 import { startScheduler } from "./utils/scheduler.js";
 import { apiLimiter } from "./middlewares/rateLimiter.js";
 import logger from "./utils/logger.js";
@@ -129,6 +130,7 @@ app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/dashboard", dashboard);
 app.use("/api/v1/debts", debtRoutes);
+app.use("/api/v1/support", supportRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

@@ -237,3 +237,66 @@ export async function sendNotificationEmail(user, subject, message) {
 
   await sendEmail(user.email, subject, message, wrapHTML(subject, body));
 }
+
+// ── Support ticket email (with optional attachments) ──
+export async function sendSupportEmail(
+  supportAddr,
+  { userName, userEmail, subject, description, contractId, attachments }
+) {
+  const client = getResend();
+  if (!client) {
+    console.warn(`⚠️  Support email skipped (no API key): "${subject}"`);
+    return;
+  }
+
+  const refLine = contractId
+    ? `<tr><td style="padding-bottom:12px; color:#545454; font-size:14px;"><strong>Contract ID:</strong> ${contractId}</td></tr>`
+    : "";
+
+  const html = wrapHTML(`Support: ${subject}`, `
+    <tr><td style="padding:8px 0 12px;"><h1 style="margin:0; font-size:22px; color:#545454;">Support Ticket</h1></td></tr>
+    <tr><td style="padding-bottom:12px; color:#545454; font-size:14px;">
+      <strong>From:</strong> ${userName} &lt;${userEmail}&gt;
+    </td></tr>
+    <tr><td style="padding-bottom:12px; color:#545454; font-size:14px;">
+      <strong>Category:</strong> ${subject}
+    </td></tr>
+    ${refLine}
+    <tr><td style="padding-bottom:16px; color:#545454; font-size:15px; line-height:1.6; white-space:pre-wrap;">
+      ${description}
+    </td></tr>
+    ${attachments?.length ? `<tr><td style="padding-top:8px; color:#8a8a8a; font-size:13px;">${attachments.length} attachment(s) included below.</td></tr>` : ""}
+  `);
+
+  const text = `Support ticket from ${userName} <${userEmail}>\nCategory: ${subject}\n${contractId ? `Contract: ${contractId}\n` : ""}\n${description}`;
+
+  try {
+    const payload = {
+      from: FROM_ADDRESS,
+      to: [supportAddr],
+      reply_to: userEmail,
+      subject: `[Support] ${subject} — ${userName}`,
+      text,
+      html,
+    };
+
+    // Attach images if provided (Resend accepts base64 content)
+    if (attachments?.length) {
+      payload.attachments = attachments.map((file) => ({
+        filename: file.originalname,
+        content: file.buffer,
+      }));
+    }
+
+    const { data, error } = await client.emails.send(payload);
+
+    if (error) {
+      console.error(`❌ Support email failed:`, error.message);
+      return;
+    }
+
+    console.log(`✅ Support email sent [${data.id}] — ${subject}`);
+  } catch (error) {
+    console.error(`❌ Support email failed: ${error.message}`);
+  }
+}

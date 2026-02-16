@@ -159,5 +159,12 @@ export const lender = {
   acceptRequest: requestId => api.post(`/lender/requests/${requestId}/accept`),
   rejectRequest: requestId => api.post(`/lender/requests/${requestId}/reject`),
 };
+// Support
+export const support = {
+  submit: (formData) =>
+    api.post(`/support`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+};
 
 export default api;

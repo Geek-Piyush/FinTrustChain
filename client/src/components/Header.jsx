@@ -9,6 +9,7 @@ const receiverTabs = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/brochures", label: "Brochures" },
   { to: "/debts", label: "Debts" },
+  { to: "/support", label: "Support" },
   { to: "/how-it-works", label: "Guide" },
 ];
 
@@ -16,6 +17,7 @@ const lenderTabs = [
   { to: "/lender-dashboard", label: "Dashboard" },
   { to: "/create-brochure", label: "Create Brochure" },
   { to: "/debts", label: "Debts" },
+  { to: "/support", label: "Support" },
   { to: "/how-it-works", label: "Guide" },
 ];
 
