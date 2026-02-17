@@ -104,7 +104,6 @@ export const contracts = {
   triggerDefaultCheck: payload =>
     api.post(`/contracts/admin/trigger-default-check`, payload),
   guarantorPay: id => api.post(`/contracts/${id}/guarantor-pay`),
-  simulatePaymentCallback: payload => api.post(`/payments/callback`, payload),
 };
 
 // Guarantor requests
@@ -131,7 +130,8 @@ export const payments = {
     }),
   acknowledgeProof: paymentId => api.post(`/payments/acknowledge/${paymentId}`),
   disburse: payload => api.post(`/payments/disburse`, payload),
-  callback: payload => api.post(`/payments/callback`, payload),
+  checkStatus: (merchantOrderId, params) =>
+    api.get(`/payments/status/${merchantOrderId}`, { params }),
 };
 
 // Notifications

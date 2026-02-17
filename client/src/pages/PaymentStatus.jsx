@@ -1,179 +1,170 @@
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import Loader from "../components/Loader";
-import api from "../api/api";
+import React, { useEffect, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { payments } from "../api/api";
+import { CheckCircle, XCircle, Loader2, Clock } from "lucide-react";
 
-const PaymentStatus = () => {
-  const [searchParams] = useSearchParams();
+const POLL_INTERVAL = 3000; // 3 seconds
+const MAX_POLLS = 20; // give up after ~60 seconds
+
+export default function PaymentStatus() {
+  const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState("confirm"); // confirm | processing | success | error
-  const [message, setMessage] = useState("");
+  const merchantOrderId = params.get("merchantOrderId");
+  const type = params.get("type") || "EMI";
+  const emiNumber = params.get("emiNumber");
 
-  const merchantOrderId = searchParams.get("merchantOrderId");
-  const paymentType = searchParams.get("type"); // 'EMI', 'DISBURSAL', or 'GUARANTOR_PAY'
-  const emiNumber = searchParams.get("emiNumber"); // EMI installment number
+  const [state, setState] = useState("POLLING"); // POLLING | COMPLETED | FAILED | TIMEOUT
+  const [pollCount, setPollCount] = useState(0);
 
-  // Extract contractId from merchantOrderId (format: TYPE_contractId_suffix)
-  const contractId = merchantOrderId?.split("_")[1];
-
-  const triggerCallback = async () => {
-    if (!merchantOrderId || !contractId) {
-      setStatus("error");
-      setMessage("Invalid payment information.");
+  useEffect(() => {
+    if (!merchantOrderId) {
+      setState("FAILED");
       return;
     }
 
-    setStatus("processing");
-    setMessage("Verifying your payment…");
+    let cancelled = false;
 
-    try {
-      await api.post("/payments/callback", {
-        type: "CHECKOUT_ORDER_COMPLETED",
-        payload: {
-          merchantId: "PGTESTPAYUAT",
-          originalMerchantOrderId: merchantOrderId,
-          state: "COMPLETED",
-          amount: 0,
-          metaInfo: {
-            contractId: contractId,
-            paymentType: paymentType || "EMI",
-            ...(emiNumber ? { emiNumber: emiNumber } : {}),
-          },
-          paymentDetails: [{ state: "COMPLETED" }],
-        },
-      });
+    const poll = async () => {
+      try {
+        const { data } = await payments.checkStatus(merchantOrderId, {
+          ...(emiNumber ? { emiNumber } : {}),
+        });
+        const paymentState = data?.data?.paymentState;
 
-      setStatus("success");
-      setMessage(
-        paymentType === "DISBURSAL"
-          ? "Disbursal payment completed successfully!"
-          : paymentType === "GUARANTOR_PAY"
-          ? "Guarantor liability payment completed!"
-          : `EMI${emiNumber ? ` #${emiNumber}` : ""} payment completed!`
-      );
+        if (cancelled) return;
 
-      setTimeout(() => navigate("/dashboard"), 2000);
-    } catch (error) {
-      setStatus("error");
-      setMessage(
-        error.response?.data?.message ||
-          error.message ||
-          "Payment processing failed."
-      );
-    }
-  };
+        if (paymentState === "COMPLETED") {
+          setState("COMPLETED");
+          return;
+        }
 
-  const handleCancel = () => {
-    if (contractId) {
-      navigate(`/contracts/${contractId}`);
-    } else {
-      navigate("/dashboard");
-    }
-  };
+        if (paymentState === "FAILED") {
+          setState("FAILED");
+          return;
+        }
 
-  const getPaymentLabel = () => {
-    if (paymentType === "DISBURSAL") return "Disbursal Payment";
-    if (paymentType === "GUARANTOR_PAY") return "Guarantor Liability Payment";
-    return emiNumber ? `EMI #${emiNumber} Payment` : "EMI Payment";
-  };
+        // Still pending — poll again if under limit
+        setPollCount((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_POLLS) {
+            setState("TIMEOUT");
+            return next;
+          }
+          if (!cancelled) {
+            setTimeout(poll, POLL_INTERVAL);
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error("Payment status check failed:", err);
+        if (!cancelled) {
+          setPollCount((prev) => {
+            const next = prev + 1;
+            if (next >= MAX_POLLS) {
+              setState("TIMEOUT");
+              return next;
+            }
+            setTimeout(poll, POLL_INTERVAL);
+            return next;
+          });
+        }
+      }
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [merchantOrderId]);
+
+  const typeLabel =
+    type === "DISBURSAL"
+      ? "Disbursal"
+      : type === "GUARANTOR_PAY"
+        ? "Guarantor Settlement"
+        : emiNumber
+          ? `EMI #${emiNumber}`
+          : "Payment";
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-slate-900 via-indigo-900/20 to-slate-900">
-      <div className="bg-slate-800/80 backdrop-blur-lg border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 text-center">
-
-        {/* ── Step 1: Confirm the payment ── */}
-        {status === "confirm" && (
+    <div className="min-h-screen pt-24 pb-12 px-4 flex items-center justify-center">
+      <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+        {state === "POLLING" && (
           <>
-            <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
-              <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Confirm Your Payment
+            <Loader2 className="w-16 h-16 text-blue-400 animate-spin mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">
+              Verifying {typeLabel}
             </h2>
-            <p className="text-slate-400 mb-1 text-sm">
-              {getPaymentLabel()}
+            <p className="text-gray-400 text-sm">
+              Confirming with payment gateway... This may take a few seconds.
             </p>
-            <p className="text-slate-300 mb-6">
-              Did your payment go through successfully?
-            </p>
-
-            <div className="space-y-3">
-              <button
-                onClick={triggerCallback}
-                className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-              >
-                ✓ Yes, Payment Was Successful
-              </button>
-              <button
-                onClick={handleCancel}
-                className="w-full px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-slate-300 font-medium transition-colors"
-              >
-                ✕ I Cancelled / Payment Failed
-              </button>
+            <div className="mt-4 w-full bg-white/5 rounded-full h-1.5">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((pollCount / MAX_POLLS) * 100, 95)}%` }}
+              />
             </div>
           </>
         )}
 
-        {/* ── Step 2: Processing ── */}
-        {status === "processing" && (
+        {state === "COMPLETED" && (
           <>
-            <Loader />
-            <h2 className="text-2xl font-bold text-white mt-4 mb-2">
-              Processing Payment
+            <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">
+              {typeLabel} Successful!
             </h2>
-            <p className="text-slate-300">{message}</p>
-          </>
-        )}
-
-        {/* ── Step 3: Success ── */}
-        {status === "success" && (
-          <>
-            <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Payment Successful!
-            </h2>
-            <p className="text-slate-300 mb-4">{message}</p>
-            <p className="text-sm text-slate-500 mb-4">
-              Redirecting to dashboard…
+            <p className="text-gray-400 text-sm mb-6">
+              Your payment has been verified and processed.
             </p>
             <button
-              onClick={() => navigate("/dashboard")}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-medium transition-colors"
+              onClick={() => navigate("/debts")}
+              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl transition-colors"
             >
-              Go to Dashboard Now
+              View My Loans
             </button>
           </>
         )}
 
-        {/* ── Step 4: Error ── */}
-        {status === "error" && (
+        {state === "FAILED" && (
           <>
-            <div className="w-16 h-16 bg-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Payment Issue
+            <XCircle className="w-16 h-16 text-rose-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">
+              {typeLabel} Failed
             </h2>
-            <p className="text-slate-300 mb-6">{message}</p>
+            <p className="text-gray-400 text-sm mb-6">
+              {!merchantOrderId
+                ? "No order ID found. Please try again."
+                : "The payment could not be verified. If money was debited, it will be refunded."}
+            </p>
             <button
-              onClick={handleCancel}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-medium transition-colors"
+              onClick={() => navigate("/debts")}
+              className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl transition-colors"
             >
-              {contractId ? "Back to Contract" : "Back to Dashboard"}
+              Back to Loans
+            </button>
+          </>
+        )}
+
+        {state === "TIMEOUT" && (
+          <>
+            <Clock className="w-16 h-16 text-amber-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">
+              Verification Taking Longer Than Expected
+            </h2>
+            <p className="text-gray-400 text-sm mb-6">
+              PhonePe hasn't confirmed yet. Your payment may still be processing.
+              Check your loan status in a few minutes.
+            </p>
+            <button
+              onClick={() => navigate("/debts")}
+              className="px-6 py-3 bg-amber-500/80 hover:bg-amber-500 text-white font-medium rounded-xl transition-colors"
+            >
+              View My Loans
             </button>
           </>
         )}
       </div>
     </div>
   );
-};
-
-export default PaymentStatus;
+}
