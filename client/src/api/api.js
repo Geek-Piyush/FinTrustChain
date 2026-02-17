@@ -159,12 +159,30 @@ export const lender = {
   acceptRequest: requestId => api.post(`/lender/requests/${requestId}/accept`),
   rejectRequest: requestId => api.post(`/lender/requests/${requestId}/reject`),
 };
-// Support
 export const support = {
   submit: (formData) =>
     api.post(`/support`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+};
+
+// Admin
+export const admin = {
+  getStats: () => api.get(`/admin/stats`),
+  getRevenue: (params) => api.get(`/admin/revenue`, { params }),
+  getRevenueChart: () => api.get(`/admin/revenue/chart`),
+  getUsers: (params) => api.get(`/admin/users`, { params }),
+  blockUser: (id) => api.patch(`/admin/users/${id}/block`),
+  getContracts: (params) => api.get(`/admin/contracts`, { params }),
+  getContractById: (contractId) => api.get(`/admin/contracts/${contractId}`),
+  updateContractStatus: (id, status) =>
+    api.patch(`/admin/contracts/${id}/status`, { status }),
+};
+
+// Subscription
+export const subscription = {
+  subscribe: (plan, duration) =>
+    api.post(`/users/subscribe`, { plan, duration }),
 };
 
 export default api;

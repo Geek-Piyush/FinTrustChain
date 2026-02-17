@@ -21,5 +21,7 @@ router.patch(
 );
 
 router.post("/toggle-my-role", userController.toggleCurrentUserRole);
+router.get("/can-toggle-role", userController.canToggleRole);
+router.post("/subscribe", userController.subscribe);
 
 export default router;

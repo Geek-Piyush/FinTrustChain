@@ -159,11 +159,30 @@ export function getGuarantorImpact(receiverTIGainOrLoss) {
 /**
  * Determines the maximum loan amount a user is eligible for based on their TI.
  * @param {number} currentTI - The user's current TrustIndex.
+ * @param {object} [premiumInfo] - Optional premium information.
+ * @param {boolean} [premiumInfo.active] - Whether the user has an active premium.
+ * @param {string} [premiumInfo.plan] - The premium plan type.
  * @returns {number} The maximum eligible loan amount.
  */
-export function getMaxLoanLimit(currentTI) {
-  const tier = LOAN_LIMITS.find(
+export function getMaxLoanLimit(currentTI, premiumInfo) {
+  const tierIndex = LOAN_LIMITS.findIndex(
     (t) => currentTI >= t.range[0] && currentTI < t.range[1]
   );
-  return tier ? tier.limit : 0;
+
+  let limit = tierIndex >= 0 ? LOAN_LIMITS[tierIndex].limit : 0;
+
+  if (premiumInfo?.active) {
+    if (premiumInfo.plan === "RECEIVER" && tierIndex >= 0) {
+      // Premium receiver: access one tier above
+      const nextTier = tierIndex + 1;
+      if (nextTier < LOAN_LIMITS.length) {
+        limit = LOAN_LIMITS[nextTier].limit;
+      }
+    } else if (premiumInfo.plan === "LENDER") {
+      // Premium lender: 2× limit, capped at ₹40,000
+      limit = Math.min(limit * 2, 40000);
+    }
+  }
+
+  return limit;
 }

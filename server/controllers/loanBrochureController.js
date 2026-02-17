@@ -8,9 +8,25 @@ export const createBrochure = async (req, res, next) => {
     if (lender.currentRole !== "LENDER") {
       throw new Error("You must be in the LENDER role to post a brochure.");
     }
+    if (!lender.upiId) {
+      throw new Error(
+        "Please add your UPI ID in your profile before creating a brochure."
+      );
+    }
+    if (lender.lenderCapital <= 0) {
+      throw new Error(
+        "Please set your investment capital in your profile before creating a brochure."
+      );
+    }
     const { amount, interestRate, tenorDays } = req.body;
     if (!amount || !interestRate || !tenorDays) {
       throw new Error("Please provide amount, interestRate, and tenorDays.");
+    }
+    const availableCapital = lender.lenderCapital - lender.lockedCapital;
+    if (amount > availableCapital) {
+      throw new Error(
+        `Brochure amount (₹${amount}) exceeds your available capital (₹${availableCapital}). Please increase your capital in settings.`
+      );
     }
     const newBrochure = await LoanBrochure.create({
       lender: lender.id,

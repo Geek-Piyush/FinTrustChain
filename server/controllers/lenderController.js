@@ -1,6 +1,7 @@
 import LoanRequest from "../models/loanRequestModel.js";
 import LoanBrochure from "../models/loanBrochureModel.js";
-import { createContract } from "./contractController.js"; // 1. Import the createContract function
+import User from "../models/userModel.js";
+import { createContract } from "./contractController.js";
 
 // GET /lender/brochures - Get all brochures for logged-in lender
 export const getMyBrochures = async (req, res, next) => {
@@ -83,14 +84,33 @@ export const acceptLoanRequest = async (req, res, next) => {
       );
     }
 
+    // --- Capital Check ---
+    const freshLender = await User.findById(lender.id).select("+upiId");
+    const available = freshLender.lenderCapital - freshLender.lockedCapital;
+    if (myBrochureInRequest.amount > available) {
+      throw new Error(
+        `Insufficient capital. Need ₹${myBrochureInRequest.amount} but only ₹${available} available.`
+      );
+    }
+
+    // --- Lock Capital ---
+    freshLender.lockedCapital += myBrochureInRequest.amount;
+    await freshLender.save();
+
     // --- Update Loan Request Status ---
     request.status = "CONTRACTING";
     request.selectedBrochure = myBrochureInRequest.id;
     await request.save();
 
     // --- 2. CRITICAL STEP: Trigger Contract Creation ---
-    // This call starts the PDF generation and signing process.
     const newContract = await createContract(loanRequestId);
+
+    // --- Auto-deactivate brochures exceeding available capital ---
+    const updatedAvailable = freshLender.lenderCapital - freshLender.lockedCapital;
+    await LoanBrochure.updateMany(
+      { lender: lender.id, active: true, amount: { $gt: updatedAvailable } },
+      { active: false }
+    );
 
     res.status(200).json({
       status: "success",

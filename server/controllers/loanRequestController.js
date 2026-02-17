@@ -66,6 +66,11 @@ export const createLoanRequest = async (req, res, next) => {
     if (receiver.currentRole !== "RECEIVER") {
       throw new Error("You must be in the RECEIVER role to request a loan.");
     }
+    if (!receiver.upiId) {
+      throw new Error(
+        "Please add your UPI ID in your profile before applying for a loan."
+      );
+    }
     if (!brochureIds || brochureIds.length === 0 || brochureIds.length > 3) {
       throw new Error(
         "You must select between 1 and 3 brochures to apply for."

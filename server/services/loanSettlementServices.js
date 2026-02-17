@@ -1,10 +1,29 @@
 import Contract from "../models/contractModel.js";
 import User from "../models/userModel.js";
 import LoanRequest from "../models/loanRequestModel.js";
+import LoanBrochure from "../models/loanBrochureModel.js";
+import PlatformRevenue from "../models/platformRevenueModel.js";
 import * as trustIndexService from "./trustIndexService.js";
 import * as userService from "./userService.js";
 import { createClosurePDF, applySignatureToPDF } from "./pdfService.js";
 import { sendLoanDefaultEmail } from "../utils/email.js";
+
+// Helper: release locked capital and reactivate brochures
+async function releaseCapital(lenderId, amount) {
+  const lender = await User.findById(lenderId);
+  if (!lender) return;
+  lender.lockedCapital = Math.max(0, lender.lockedCapital - amount);
+  await lender.save();
+
+  // Reactivate brochures that can now be funded
+  const available = lender.lenderCapital - lender.lockedCapital;
+  if (available > 0) {
+    await LoanBrochure.updateMany(
+      { lender: lenderId, active: false, amount: { $lte: available } },
+      { active: true }
+    );
+  }
+}
 
 export async function settleSuccessfulRepayment(contractId) {
   try {
@@ -151,6 +170,26 @@ export async function settleSuccessfulRepayment(contractId) {
       status: "FULFILLED",
     });
 
+    // --- Release locked capital ---
+    await releaseCapital(contract.lender, contract.principal);
+
+    // --- Platform fee: 2% of total interest earned ---
+    const lender = await User.findById(contract.lender);
+    const totalInterest = contract.repaymentSchedule.reduce(
+      (sum, emi) => sum + (emi.interest || 0),
+      0
+    );
+    const platformFee = Math.round(totalInterest * 0.02);
+    if (platformFee > 0 && (!lender?.premium?.active || lender.premium.plan !== "LENDER")) {
+      await PlatformRevenue.create({
+        type: "PLATFORM_FEE",
+        contract: contract._id,
+        user: contract.lender,
+        amount: platformFee,
+        description: `2% of ₹${totalInterest} interest on contract ${contract.contractId || contract._id}`,
+      });
+    }
+
     console.log(
       `Settlement process for Contract ID: ${contractId} completed successfully.`
     );
@@ -251,6 +290,9 @@ export async function settleDefaultedLoan(contract) {
     console.log(
       `Default settlement for Contract ID: ${contract._id} completed successfully.`
     );
+
+    // --- Release locked capital ---
+    await releaseCapital(contract.lender, contract.principal);
 
     // Email all affected parties
     const cid = contract.contractId || contract._id;

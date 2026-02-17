@@ -3,6 +3,7 @@ import { settleSuccessfulRepayment } from "../services/loanSettlementServices.js
 import { phonepeClient } from "../services/paymentService.js";
 import Contract from "../models/contractModel.js";
 import Transaction from "../models/transactionModel.js";
+import PlatformRevenue from "../models/platformRevenueModel.js";
 import { sendPaymentReceivedEmail } from "../utils/email.js";
 
 // POST /payments/pay
@@ -259,6 +260,21 @@ export const handleCallback = async (req, res, next) => {
             console.log(
               `EMI #${emiNumber} marked as PAID for contract ${contractId}. Overdue counter reset.`
             );
+
+            // --- Convenience fee: ₹5 for EMI ≤₹5000, ₹10 for >₹5000 ---
+            const receiver = contract.receiver;
+            const isPremiumReceiver =
+              receiver?.premium?.active && receiver.premium.plan === "RECEIVER";
+            if (!isPremiumReceiver) {
+              const convenienceFee = emi.amountDue <= 5000 ? 5 : 10;
+              await PlatformRevenue.create({
+                type: "CONVENIENCE_FEE",
+                contract: contract._id,
+                user: receiver._id,
+                amount: convenienceFee,
+                description: `EMI #${emiNumber} convenience fee`,
+              });
+            }
 
             // Email lender about the received payment
             if (contract.lender?.email) {

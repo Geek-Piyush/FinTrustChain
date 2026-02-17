@@ -19,6 +19,8 @@ import PaymentStatus from "./pages/PaymentStatus";
 import Notifications from "./pages/Notifications";
 import Debts from "./pages/Debts";
 import Support from "./pages/Support";
+import AdminDashboard from "./pages/AdminDashboard";
+import PremiumPlans from "./pages/PremiumPlans";
 import NotFound from "./pages/NotFound";
 import Contact from "./pages/Contact";
 import About from "./pages/About";
@@ -63,6 +65,8 @@ function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/debts" element={<Debts />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/premium" element={<PremiumPlans />} />
         </Route>
 
         {/* Public routes */}

@@ -11,6 +11,9 @@ export default function UpdateProfile() {
 
   const [bio, setBio] = useState(user?.bio || "");
   const [upiId, setUpiId] = useState(user?.upiId || "");
+  const [lenderCapital, setLenderCapital] = useState(
+    user?.lenderCapital || ""
+  );
   const [avatarFile, setAvatarFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -39,6 +42,11 @@ export default function UpdateProfile() {
       }
       formData.append("upiId", upiId);
       formData.append("bio", bio);
+
+      // Include capital for lenders
+      if (user?.currentRole === "LENDER" && lenderCapital !== "") {
+        formData.append("lenderCapital", Number(lenderCapital));
+      }
 
       console.log("Sending update request with:", {
         hasAvatar: !!avatarFile,
@@ -183,6 +191,45 @@ export default function UpdateProfile() {
               </p>
             </div>
           </div>
+
+          {/* Lender Capital (only for lender role) */}
+          {user?.currentRole === "LENDER" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Investment Capital (₹)
+              </label>
+              <input
+                type="number"
+                value={lenderCapital}
+                onChange={(e) => setLenderCapital(e.target.value)}
+                min="0"
+                className="w-full p-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+                placeholder="e.g. 50000"
+              />
+              <div className="flex items-start gap-2 mt-2">
+                <svg
+                  className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <p className="text-xs text-gray-400">
+                  The maximum amount you're willing to lend. You won't be able
+                  to reduce this below your currently locked capital
+                  {user?.lockedCapital > 0 && (
+                    <span className="text-amber-400">
+                      {" "}(₹{user.lockedCapital.toLocaleString("en-IN")} locked)
+                    </span>
+                  )}.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Submit Buttons */}
           <div className="flex gap-3 pt-4">

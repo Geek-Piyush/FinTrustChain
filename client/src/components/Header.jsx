@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { Menu, X, Bell, LogOut, ChevronDown, User } from "lucide-react";
+import { Menu, X, Bell, LogOut, ChevronDown, User, Crown, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { notifications as notificationsApi } from "../api/api";
 import { getAvatarUrl } from "../utils/imageUtils";
@@ -9,6 +9,7 @@ const receiverTabs = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/brochures", label: "Brochures" },
   { to: "/debts", label: "Debts" },
+  { to: "/premium", label: "Premium" },
   { to: "/support", label: "Support" },
   { to: "/how-it-works", label: "Guide" },
 ];
@@ -17,6 +18,7 @@ const lenderTabs = [
   { to: "/lender-dashboard", label: "Dashboard" },
   { to: "/create-brochure", label: "Create Brochure" },
   { to: "/debts", label: "Debts" },
+  { to: "/premium", label: "Premium" },
   { to: "/support", label: "Support" },
   { to: "/how-it-works", label: "Guide" },
 ];
@@ -35,11 +37,16 @@ export default function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const dropdownRef = useRef(null);
 
-  const tabs = user
+  const baseTabs = user
     ? user?.currentRole === "LENDER"
       ? lenderTabs
       : receiverTabs
     : publicTabs;
+
+  // Add Admin tab if user is an admin
+  const tabs = user?.role === "ADMIN"
+    ? [...baseTabs, { to: "/admin", label: "Admin" }]
+    : baseTabs;
 
   const handleLogout = () => {
     setUserMenuOpen(false);
@@ -86,11 +93,10 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed z-50 transition-all duration-300 left-0 right-0 ${
-        isSticky
+      className={`fixed z-50 transition-all duration-300 left-0 right-0 ${isSticky
           ? "top-0 bg-slate-900/95 border-b border-white/10 shadow-lg shadow-black/20"
           : "top-4 mx-4 md:mx-8 lg:mx-16 rounded-2xl bg-slate-900/80 border border-white/10"
-      } backdrop-blur-xl`}
+        } backdrop-blur-xl`}
     >
       <nav className="px-4 md:px-6 flex items-center justify-between max-w-7xl mx-auto h-16">
         {/* Logo */}
@@ -112,10 +118,9 @@ export default function Header() {
               key={t.to}
               to={t.to}
               className={({ isActive }) =>
-                `px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? "bg-white/10 text-white"
-                    : "text-slate-300 hover:text-white hover:bg-white/5"
+                `px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
+                  ? "bg-white/10 text-white"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
                 }`
               }
             >
@@ -165,9 +170,8 @@ export default function Header() {
                   </span>
                   <ChevronDown
                     size={16}
-                    className={`text-slate-400 transition-transform duration-200 ${
-                      userMenuOpen ? "rotate-180" : ""
-                    }`}
+                    className={`text-slate-400 transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""
+                      }`}
                   />
                 </button>
 
@@ -190,6 +194,24 @@ export default function Header() {
                       <User size={16} />
                       View Profile
                     </Link>
+                    <Link
+                      to="/premium"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-amber-400 hover:bg-amber-500/10 transition-colors"
+                    >
+                      <Crown size={16} />
+                      Premium Plans
+                    </Link>
+                    {user?.role === "ADMIN" && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+                      >
+                        <ShieldCheck size={16} />
+                        Admin Panel
+                      </Link>
+                    )}
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors"

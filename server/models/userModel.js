@@ -66,6 +66,18 @@ const userSchema = new mongoose.Schema(
 
     successfulRepayments: { type: Number, default: 0 },
     defaults: { type: Number, default: 0 },
+
+    // ── Lender Capital Tracking ──
+    lenderCapital: { type: Number, default: 0 },   // total declared investment budget
+    lockedCapital: { type: Number, default: 0 },   // locked in active contracts
+
+    // ── Premium Subscription ──
+    premium: {
+      active: { type: Boolean, default: false },
+      plan: { type: String, enum: ["LENDER", "RECEIVER", null], default: null },
+      duration: { type: String, enum: ["BIMONTHLY", "ANNUAL", null], default: null },
+      expiresAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

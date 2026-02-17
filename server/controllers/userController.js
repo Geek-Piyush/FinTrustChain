@@ -1,6 +1,7 @@
 import User from "../models/userModel.js";
 import LoanBrochure from "../models/loanBrochureModel.js";
 import Contract from "../models/contractModel.js";
+import PlatformRevenue from "../models/platformRevenueModel.js";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";
@@ -103,6 +104,21 @@ export const updateMe = async (req, res, next) => {
     if (req.body.avatarUrl) filteredBody.avatarUrl = req.body.avatarUrl;
     if (req.body.upiId) filteredBody.upiId = req.body.upiId;
 
+    // Lender-only: allow setting investment capital
+    if (req.body.lenderCapital !== undefined) {
+      const cap = Number(req.body.lenderCapital);
+      if (isNaN(cap) || cap < 0) {
+        throw new Error("Capital must be a non-negative number.");
+      }
+      // Cannot set capital below what's already locked
+      if (cap < (req.user.lockedCapital || 0)) {
+        throw new Error(
+          `Cannot reduce capital below your locked amount (₹${req.user.lockedCapital}).`
+        );
+      }
+      filteredBody.lenderCapital = cap;
+    }
+
     // 2. Update user document
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
@@ -184,6 +200,100 @@ export const toggleCurrentUserRole = async (req, res, next) => {
       data: {
         user,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Premium Subscription ──
+const PREMIUM_PRICING = {
+  RECEIVER: { BIMONTHLY: { amount: 99, days: 60 }, ANNUAL: { amount: 499, days: 365 } },
+  LENDER:   { BIMONTHLY: { amount: 199, days: 60 }, ANNUAL: { amount: 999, days: 365 } },
+};
+
+export const subscribe = async (req, res, next) => {
+  try {
+    const { plan, duration } = req.body;
+
+    if (!plan || !["LENDER", "RECEIVER"].includes(plan)) {
+      throw new Error("Plan must be 'LENDER' or 'RECEIVER'.");
+    }
+    if (!duration || !["BIMONTHLY", "ANNUAL"].includes(duration)) {
+      throw new Error("Duration must be 'BIMONTHLY' or 'ANNUAL'.");
+    }
+
+    const pricing = PREMIUM_PRICING[plan][duration];
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + pricing.days);
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        "premium.active": true,
+        "premium.plan": plan,
+        "premium.duration": duration,
+        "premium.expiresAt": expiresAt,
+      },
+      { new: true }
+    ).select("+upiId");
+
+    // Record subscription revenue
+    await PlatformRevenue.create({
+      type: "SUBSCRIPTION",
+      user: req.user.id,
+      amount: pricing.amount,
+      description: `${plan} ${duration} subscription (₹${pricing.amount})`,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: `${plan} ${duration} premium activated until ${expiresAt.toLocaleDateString()}.`,
+      data: { user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Check if user can toggle role ──
+export const canToggleRole = async (req, res, next) => {
+  try {
+    const user = req.user;
+    let canToggle = true;
+    let reason = "";
+
+    if (user.currentRole === "LENDER") {
+      const activeBrochures = await LoanBrochure.findOne({
+        lender: user.id,
+        active: true,
+      });
+      if (activeBrochures) {
+        canToggle = false;
+        reason = "You have active loan brochures. Close them first.";
+      }
+    } else {
+      const activeContract = await Contract.findOne({
+        receiver: user.id,
+        status: {
+          $in: [
+            "AWAITING_SIGNATURES",
+            "AWAITING_DISBURSAL",
+            "AWAITING_RECEIPT_CONFIRMATION",
+            "ACTIVE",
+            "DEFAULT",
+          ],
+        },
+      });
+      if (activeContract) {
+        canToggle = false;
+        reason = "You have an active or defaulted loan. Settle it first.";
+      }
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: { canToggle, reason },
     });
   } catch (error) {
     next(error);
