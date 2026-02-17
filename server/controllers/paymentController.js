@@ -59,26 +59,94 @@ export const createPayment = async (req, res, next) => {
   }
 };
 
+import crypto from "crypto";
+
+/**
+ * Server-to-server verification with PhonePe.
+ * Calls PhonePe's Order Status API to confirm the payment actually succeeded.
+ * This prevents forged callbacks from being accepted.
+ */
+async function verifyPaymentServerSide(merchantOrderId) {
+  try {
+    if (process.env.NODE_ENV === "development") {
+      // In dev, we already validated the HMAC — skip the PhonePe API call
+      // because sandbox may not have real order data.
+      console.log(
+        `[DEV] Skipping PhonePe status check for ${merchantOrderId} (HMAC already verified).`
+      );
+      return true;
+    }
+
+    const statusResponse = await phonepeClient.getOrderStatus(merchantOrderId);
+    const state = statusResponse?.state;
+
+    if (state === "COMPLETED") {
+      console.log(`✅ PhonePe verified: ${merchantOrderId} is COMPLETED.`);
+      return true;
+    }
+
+    console.error(
+      `❌ PhonePe status for ${merchantOrderId}: ${state || "UNKNOWN"}`
+    );
+    return false;
+  } catch (err) {
+    console.error(
+      `PhonePe status check failed for ${merchantOrderId}:`,
+      err.message
+    );
+    return false;
+  }
+}
+
 // POST /payments/callback
-// Only for admin use; not exposed to users directly.
+// Server-to-server webhook from PhonePe. Never exposed to frontend.
 export const handleCallback = async (req, res, next) => {
   try {
     let callbackResponse;
 
-    // --- START: DEVELOPMENT-ONLY BYPASS ---
-    // IMPORTANT: This block allows you to test with Postman by skipping validation.
-    // This MUST be removed or disabled in production.
+    // ── Step 1: Validate the incoming callback ──
+    // In ALL environments, we validate. No bypasses.
+    const authorizationHeader = req.headers["authorization"];
+    const responseBodyString = JSON.stringify(req.body);
+
     if (process.env.NODE_ENV === "development") {
-      console.log("--- DEVELOPMENT MODE: Bypassing callback validation ---");
+      // Dev: validate using HMAC shared secret instead of PhonePe credentials
+      const hmacSecret = process.env.CALLBACK_HMAC_SECRET;
+      if (!hmacSecret) {
+        console.warn(
+          "⚠ CALLBACK_HMAC_SECRET not set. Rejecting callback in dev mode."
+        );
+        return res.status(401).send("HMAC secret not configured.");
+      }
+
+      // Expect header: "HMAC <hex-digest>"
+      if (!authorizationHeader || !authorizationHeader.startsWith("HMAC ")) {
+        return res.status(401).send("Missing or invalid HMAC authorization.");
+      }
+
+      const receivedHmac = authorizationHeader.slice(5);
+      const expectedHmac = crypto
+        .createHmac("sha256", hmacSecret)
+        .update(responseBodyString)
+        .digest("hex");
+
+      if (
+        !crypto.timingSafeEqual(
+          Buffer.from(receivedHmac, "hex"),
+          Buffer.from(expectedHmac, "hex")
+        )
+      ) {
+        console.error("HMAC signature mismatch — rejecting callback.");
+        return res.status(401).send("Invalid HMAC signature.");
+      }
+
       callbackResponse = {
         type: req.body.type,
         payload: req.body.payload,
       };
     } else {
-      // In production, we run the real validation.
-      const authorizationHeader = req.headers["authorization"];
-      const responseBodyString = JSON.stringify(req.body);
-      const client = phonepeClient; // Use the shared client
+      // Production: validate with PhonePe SDK credentials
+      const client = phonepeClient;
       const usernameConfigured = process.env.PHONEPE_WEBHOOK_USERNAME;
       const passwordConfigured = process.env.PHONEPE_WEBHOOK_PASSWORD;
 
@@ -89,14 +157,37 @@ export const handleCallback = async (req, res, next) => {
         responseBodyString
       );
     }
-    // --- END: DEVELOPMENT-ONLY BYPASS ---
 
+    // ── Step 2: Server-to-server payment status verification ──
+    // Never trust the callback payload alone — confirm with PhonePe API.
     const eventType = callbackResponse.type;
     const payload = callbackResponse.payload;
+    const merchantOrderId = payload.originalMerchantOrderId;
 
-    console.log(`Received callback event: ${eventType}`);
+    console.log(`Received callback event: ${eventType}, order: ${merchantOrderId}`);
 
     if (eventType === "CHECKOUT_ORDER_COMPLETED") {
+      // Verify with PhonePe server that payment actually succeeded
+      const isVerified = await verifyPaymentServerSide(merchantOrderId);
+      if (!isVerified) {
+        console.error(
+          `Server-side verification FAILED for order ${merchantOrderId}. Rejecting.`
+        );
+        return res.status(400).send("Payment verification failed.");
+      }
+
+      // ── Step 3: Idempotency check ──
+      // Prevent duplicate processing from replayed callbacks
+      const existingTxn = await Transaction.findOne({
+        paymentTransactionId: merchantOrderId,
+      });
+      if (existingTxn) {
+        console.log(
+          `Order ${merchantOrderId} already processed. Skipping duplicate.`
+        );
+        return res.status(200).send();
+      }
+
       const contractId = payload.metaInfo.contractId;
       const paymentType = payload.metaInfo.paymentType || "EMI";
 
@@ -121,28 +212,18 @@ export const handleCallback = async (req, res, next) => {
           contract.status === "AWAITING_DISBURSAL" ||
           contract.status === "AWAITING_RECEIPT_CONFIRMATION"
         ) {
-          // Check if transaction already exists
-          const existingTransaction = await Transaction.findOne({
+          console.log("Creating new transaction for disbursal");
+          // Create a transaction record for the disbursal
+          await Transaction.create({
             contract: contract._id,
+            fromUser: contract.lender._id,
+            toUser: contract.receiver._id,
+            amount: contract.principal,
             status: "DISBURSED",
+            proofOfPaymentFilename: `phonepe_${merchantOrderId}`,
+            paymentTransactionId: merchantOrderId,
           });
-
-          if (!existingTransaction) {
-            console.log("Creating new transaction for disbursal");
-            // Create a transaction record for the disbursal
-            await Transaction.create({
-              contract: contract._id,
-              fromUser: contract.lender._id,
-              toUser: contract.receiver._id,
-              amount: contract.principal,
-              status: "DISBURSED",
-              proofOfPaymentFilename: `phonepe_${payload.originalMerchantOrderId}`,
-              paymentTransactionId: payload.originalMerchantOrderId,
-            });
-            console.log("Transaction created successfully");
-          } else {
-            console.log("Transaction already exists, skipping creation");
-          }
+          console.log("Transaction created successfully");
 
           if (contract.status !== "AWAITING_RECEIPT_CONFIRMATION") {
             contract.status = "AWAITING_RECEIPT_CONFIRMATION";

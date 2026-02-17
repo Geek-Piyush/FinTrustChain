@@ -12,6 +12,16 @@ import { generateEMISchedule } from "../services/emiService.js";
 import { sendContractReadyEmail } from "../utils/email.js";
 
 // --- MULTER SETUP for Payment Proof ---
+const ALLOWED_PROOF_MIMES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/tiff",
+  "application/pdf",
+];
+
 const proofStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, "public/img/proofs");
@@ -24,7 +34,25 @@ const proofStorage = multer.diskStorage({
     );
   },
 });
-export const uploadProof = multer({ storage: proofStorage }).single("proof");
+
+const proofFileFilter = (req, file, cb) => {
+  if (ALLOWED_PROOF_MIMES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "Invalid file type. Only images (JPEG, PNG, GIF, WebP, BMP, TIFF) and PDF files are allowed."
+      ),
+      false
+    );
+  }
+};
+
+export const uploadProof = multer({
+  storage: proofStorage,
+  fileFilter: proofFileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+}).single("proof");
 
 export const createContract = async loanRequestId => {
   // This function remains the same as your reference.
