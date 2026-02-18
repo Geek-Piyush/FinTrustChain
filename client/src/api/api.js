@@ -28,6 +28,9 @@ export const auth = {
     }),
   login: payload => api.post(`/auth/login`, payload),
   verifyEmail: token => api.get(`/auth/verify-email/${token}`),
+  forgotPassword: email => api.post(`/auth/forgot-password`, { email }),
+  resetPassword: (token, payload) =>
+    api.patch(`/auth/reset-password/${token}`, payload),
 };
 
 // Users

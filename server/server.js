@@ -32,6 +32,14 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 dotenv.config();
 
+// ── Validate critical env vars on startup ──
+const REQUIRED_ENV = ["JWT_SECRET", "JWT_EXPIRES_IN", "MONGO_URI"];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    throw new Error(`❌ Missing required environment variable: ${key}`);
+  }
+}
+
 // Create required directories if they don't exist
 const requiredDirs = [
   "public/img/users",
@@ -89,9 +97,18 @@ app.use(compression());
 app.use(express.json({ limit: "10mb" })); // To parse JSON bodies
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Serve static files (images, contracts, etc.)
+// Serve static files — ONLY safe directories (avatars).
+// Sensitive dirs (contracts, esigns, proofs) are served through
+// authenticated API endpoints, not publicly.
 app.use(
   "/public",
+  (req, res, next) => {
+    const blocked = ["/contracts", "/img/esigns", "/img/proofs"];
+    if (blocked.some((dir) => req.path.startsWith(dir))) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+    next();
+  },
   express.static(path.join(__dirname, "public"), {
     maxAge: "1d",
     setHeaders: res => {

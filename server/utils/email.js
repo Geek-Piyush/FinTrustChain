@@ -143,6 +143,42 @@ export default class Email {
 
     await sendEmail(this.to, subject, text, wrapHTML(subject, body));
   }
+
+  async sendPasswordResetEmail() {
+    const subject = "Reset Your Password";
+    const primary = "#e74c3c";
+
+    const body = `
+      <tr>
+        <td align="left" style="padding-top: 8px; padding-bottom: 12px;">
+          <h1 style="margin:0; font-size: 22px; color:#545454; font-weight:700;">Password Reset</h1>
+        </td>
+      </tr>
+      <tr>
+        <td align="left" style="padding-bottom: 16px; color:#545454; font-size:15px; line-height:1.6;">
+          Hi ${this.firstName},<br/>
+          We received a request to reset your FinTrustChain password. Click the button below to set a new password. This link will expire in <strong>10 minutes</strong>.
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding: 8px 0 24px 0;">
+          <a href="${this.url}" class="btn" style="background:${primary}; color:#ffffff; text-decoration:none; padding:14px 22px; border-radius:10px; display:inline-block; font-weight:700; font-size:15px;">
+            Reset Password
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td align="left" style="padding-bottom: 16px; color:#545454; font-size:13px; line-height:1.6;">
+          If you did not request this, please ignore this email — your password will remain unchanged.<br/><br/>
+          If the button doesn't work, copy and paste this link:<br/>
+          <a href="${this.url}" style="color:${primary}; word-break:break-all;">${this.url}</a>
+        </td>
+      </tr>`;
+
+    const text = `Hi ${this.firstName},\n\nReset your password: ${this.url}\n\nThis link expires in 10 minutes. If you did not request this, ignore this email.`;
+
+    await sendEmail(this.to, subject, text, wrapHTML(subject, body));
+  }
 }
 
 // ═══════════════════════════════════════════════

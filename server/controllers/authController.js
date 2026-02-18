@@ -59,6 +59,18 @@ export const registerUser = async (req, res, next) => {
     if (password !== passwordConfirm) {
       return next(new Error("Passwords do not match."));
     }
+
+    // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&\#^()_\-+=])[A-Za-z\d@$!%*?&\#^()_\-+=]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return next(
+        new Error(
+          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character (@$!%*?&#^()_-+=)."
+        )
+      );
+    }
+
     if (!req.file) {
       return next(new Error("E-signature image is required."));
     }
@@ -215,6 +227,117 @@ export const verifyEmail = async (req, res, next) => {
     await user.save({ validateBeforeSave: false });
 
     // 5. Log the user in by sending a JWT token
+    createSendToken(user, 200, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// FORGOT PASSWORD — sends a reset token via email
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return next(new Error("Please provide your email address."));
+    }
+
+    const user = await User.findOne({ email });
+
+    // Always respond with success to prevent email enumeration attacks
+    if (!user) {
+      return res.status(200).json({
+        status: "success",
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    // Hash and store it
+    user.passwordResetToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save({ validateBeforeSave: false });
+
+    // Build reset URL pointing to the frontend
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
+    const resetURL = `${frontendUrl}/reset-password/${resetToken}`;
+
+    try {
+      await new Email(user, resetURL).sendPasswordResetEmail();
+    } catch (err) {
+      // If email fails, clear the token
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+      console.error("Email send failed:", err);
+      return next(
+        new Error("Failed to send reset email. Please try again later.")
+      );
+    }
+
+    res.status(200).json({
+      status: "success",
+      message:
+        "If an account with that email exists, a password reset link has been sent.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// RESET PASSWORD — validates token, enforces password strength
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { password, passwordConfirm } = req.body;
+
+    if (!password || !passwordConfirm) {
+      return next(new Error("Please provide a new password and confirmation."));
+    }
+
+    if (password !== passwordConfirm) {
+      return next(new Error("Passwords do not match."));
+    }
+
+    // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&\#^()_\-+=])[A-Za-z\d@$!%*?&\#^()_\-+=]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return next(
+        new Error(
+          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
+        )
+      );
+    }
+
+    // Hash the token from the URL and find the user
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(req.params.token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return next(new Error("Reset token is invalid or has expired."));
+    }
+
+    // Set new password
+    user.passwordHash = await bcryptjs.hash(password, 12);
+    user.passwordChangedAt = Date.now() - 1000; // minus 1s so JWT issued after this is valid
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    // Log the user in
     createSendToken(user, 200, res);
   } catch (error) {
     next(error);

@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema(
     },
     emailVerificationToken: String,
     emailVerificationExpires: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
 
     eSign: {
       fileId: mongoose.Schema.Types.ObjectId,

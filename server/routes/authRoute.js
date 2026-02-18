@@ -19,4 +19,14 @@ router.get("/verify-email/:token", authController.verifyEmail);
 // Login route (with stricter rate limiting)
 router.post("/login", authLimiter, authController.loginUser);
 
+// Forgot password — rate-limited to prevent abuse
+router.post("/forgot-password", authLimiter, authController.forgotPassword);
+
+// Reset password with token
+router.patch(
+  "/reset-password/:token",
+  authLimiter,
+  authController.resetPassword
+);
+
 export default router;
