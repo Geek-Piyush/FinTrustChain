@@ -6,22 +6,31 @@ import { Bell, BellOff, Trash2, Check } from "lucide-react";
 export default function Notifications() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadNotifications();
   }, []);
 
-  const loadNotifications = async () => {
-    setLoading(true);
+  const loadNotifications = async (pageNum = 1, append = false) => {
+    if (pageNum === 1) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const res = await notifications.list();
-      setItems(res.data?.data?.notifications || res.data?.notifications || []);
+      const res = await notifications.list({ page: pageNum, limit: 30 });
+      const data = res.data;
+      const newItems = data?.data?.notifications || data?.notifications || [];
+      setItems(prev => (append ? [...prev, ...newItems] : newItems));
+      setPage(pageNum);
+      setHasMore(pageNum < (data?.totalPages || 1));
     } catch (err) {
       console.error("Failed to load notifications", err);
-      setItems([]);
+      if (!append) setItems([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -173,11 +182,10 @@ export default function Notifications() {
             {items.map((notification) => (
               <div
                 key={notification._id}
-                className={`border rounded-lg p-4 transition-all cursor-pointer hover:bg-white/10 ${
-                  notification.isRead
+                className={`border rounded-lg p-4 transition-all cursor-pointer hover:bg-white/10 ${notification.isRead
                     ? "border-white/10 bg-white/5"
                     : getNotificationColor(notification.type)
-                } ${!notification.isRead ? "border-l-4" : ""}`}
+                  } ${!notification.isRead ? "border-l-4" : ""}`}
                 onClick={() => handleNotificationClick(notification)}
               >
                 <div className="flex justify-between items-start gap-4">
@@ -234,6 +242,29 @@ export default function Notifications() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Load More */}
+        {!loading && hasMore && items.length > 0 && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => loadNotifications(page + 1, true)}
+              disabled={loadingMore}
+              className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 disabled:opacity-50 transition-all"
+            >
+              {loadingMore ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Loading...
+                </span>
+              ) : (
+                "Load More"
+              )}
+            </button>
           </div>
         )}
       </div>

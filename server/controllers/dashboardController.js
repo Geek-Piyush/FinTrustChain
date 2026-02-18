@@ -46,15 +46,28 @@ export const getMyStats = async (req, res, next) => {
 export const getMyActiveContracts = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const contracts = await Contract.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const query = {
       $or: [{ receiver: userId }, { lender: userId }, { guarantor: userId }],
-    })
-      .populate("lender receiver guarantor", "name avatarUrl")
-      .sort({ createdAt: -1 });
+    };
+
+    const [contracts, total] = await Promise.all([
+      Contract.find(query)
+        .populate("lender receiver guarantor", "name avatarUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Contract.countDocuments(query),
+    ]);
 
     res.status(200).json({
       status: "success",
       results: contracts.length,
+      totalPages: Math.ceil(total / limit),
+      page,
       data: {
         contracts,
       },
@@ -69,40 +82,63 @@ export const getMyActiveContracts = async (req, res, next) => {
 export const getMyPendingActions = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
     // Find contracts awaiting this user's signature
-    const contractsToSign = await Contract.find({
+    const sigQuery = {
       $or: [
         { receiver: userId, "signatures.receiver": false },
         { guarantor: userId, "signatures.guarantor": false },
         { lender: userId, "signatures.lender": false },
       ],
       status: "PENDING_SIGNATURES",
-    });
+    };
+
+    const [contractsToSign, totalContracts] = await Promise.all([
+      Contract.find(sigQuery).skip(skip).limit(limit),
+      Contract.countDocuments(sigQuery),
+    ]);
 
     // Find guarantor requests sent to this user
-    const guarantorRequests = await GuarantorRequest.find({
-      guarantor: userId,
-      status: "PENDING",
-    }).populate("receiver", "name avatarUrl");
+    const grQuery = { guarantor: userId, status: "PENDING" };
+    const [guarantorRequests, totalGR] = await Promise.all([
+      GuarantorRequest.find(grQuery)
+        .populate("receiver", "name avatarUrl")
+        .skip(skip)
+        .limit(limit),
+      GuarantorRequest.countDocuments(grQuery),
+    ]);
 
     // Find loan requests for this lender's brochures
     const myBrochures = await LoanBrochure.find({ lender: userId }).select(
       "_id"
     );
     const myBrochureIds = myBrochures.map(b => b.id);
-    const loanRequests = await LoanRequest.find({
+    const lrQuery = {
       brochureIds: { $in: myBrochureIds },
       status: "GUARANTOR_ACCEPTED",
-    }).populate("receiver", "name avatarUrl");
+    };
+    const [loanRequests, totalLR] = await Promise.all([
+      LoanRequest.find(lrQuery)
+        .populate("receiver", "name avatarUrl")
+        .skip(skip)
+        .limit(limit),
+      LoanRequest.countDocuments(lrQuery),
+    ]);
 
     res.status(200).json({
       status: "success",
+      page,
       data: {
         pendingActions: {
           contractsToSign,
+          contractsToSignTotal: totalContracts,
           guarantorRequests,
+          guarantorRequestsTotal: totalGR,
           loanRequests,
+          loanRequestsTotal: totalLR,
         },
       },
     });
@@ -173,6 +209,9 @@ export const getEligibleGuarantors = async (req, res, next) => {
 export const getEligibleBrochures = async (req, res, next) => {
   try {
     const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
     if (user.currentRole !== "RECEIVER") {
       throw new Error("Only receivers can view eligible brochures");
@@ -183,17 +222,26 @@ export const getEligibleBrochures = async (req, res, next) => {
 
     // Find active brochures within the user's limit
     // Exclude brochures from the user themselves (if they're also a lender)
-    const brochures = await LoanBrochure.find({
+    const query = {
       active: true,
       amount: { $lte: maxLoanLimit },
       lender: { $ne: user._id },
-    })
-      .populate("lender", "name email trustIndex")
-      .sort({ createdAt: -1 });
+    };
+
+    const [brochures, total] = await Promise.all([
+      LoanBrochure.find(query)
+        .populate("lender", "name email trustIndex")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      LoanBrochure.countDocuments(query),
+    ]);
 
     res.status(200).json({
       status: "success",
       results: brochures.length,
+      totalPages: Math.ceil(total / limit),
+      page,
       data: {
         brochures,
         maxEligibleAmount: maxLoanLimit,

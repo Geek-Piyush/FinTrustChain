@@ -3,13 +3,25 @@ import Notification from "../models/notificationModel.js";
 // GET /notifications
 export const getMyNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ user: req.user.id }).sort({
-      createdAt: -1,
-    }); // Sort by newest first
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 30;
+    const skip = (page - 1) * limit;
+
+    const query = { user: req.user.id };
+
+    const [notifications, total] = await Promise.all([
+      Notification.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Notification.countDocuments(query),
+    ]);
 
     res.status(200).json({
       status: "success",
       results: notifications.length,
+      totalPages: Math.ceil(total / limit),
+      page,
       data: {
         notifications,
       },

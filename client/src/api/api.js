@@ -55,13 +55,15 @@ export const users = {
 // Dashboard endpoints
 export const dashboard = {
   myStats: () => api.get(`/dashboard/my-stats`),
-  myPending: () => api.get(`/dashboard/my-pending-actions`),
-  myActiveContracts: () => api.get(`/dashboard/my-active-contracts`),
+  myPending: params => api.get(`/dashboard/my-pending-actions`, { params }),
+  myActiveContracts: params =>
+    api.get(`/dashboard/my-active-contracts`, { params }),
   myEndorsers: () => api.get(`/dashboard/my-endorsers`),
   myEndorsees: () => api.get(`/dashboard/my-endorsees`),
   tiHistory: () => api.get(`/dashboard/ti-history`),
   eligibleGuarantors: () => api.get(`/dashboard/eligible-guarantors`),
-  eligibleBrochures: () => api.get(`/dashboard/eligible-brochures`),
+  eligibleBrochures: params =>
+    api.get(`/dashboard/eligible-brochures`, { params }),
 };
 
 // Brochures

@@ -7,15 +7,25 @@ import { createContract } from "./contractController.js";
 export const getMyBrochures = async (req, res, next) => {
   try {
     const lender = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    // Find all brochures created by this lender
-    const brochures = await LoanBrochure.find({
-      lender: lender.id,
-    }).sort({ createdAt: -1 });
+    const query = { lender: lender.id };
+
+    const [brochures, total] = await Promise.all([
+      LoanBrochure.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      LoanBrochure.countDocuments(query),
+    ]);
 
     res.status(200).json({
       status: "success",
       results: brochures.length,
+      totalPages: Math.ceil(total / limit),
+      page,
       data: {
         brochures,
       },
@@ -30,6 +40,9 @@ export const getMyBrochures = async (req, res, next) => {
 export const getMyLoanRequests = async (req, res, next) => {
   try {
     const lender = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
     // Find all of the lender's active brochures
     const myBrochures = await LoanBrochure.find({
@@ -39,14 +52,24 @@ export const getMyLoanRequests = async (req, res, next) => {
     const myBrochureIds = myBrochures.map(b => b.id);
 
     // Find all loan requests that have a guarantor accepted and are ready for a lender
-    const requests = await LoanRequest.find({
+    const requestQuery = {
       brochureIds: { $in: myBrochureIds },
       status: "GUARANTOR_ACCEPTED",
-    }).populate("receiver", "name avatarUrl trustIndex");
+    };
+
+    const [requests, total] = await Promise.all([
+      LoanRequest.find(requestQuery)
+        .populate("receiver", "name avatarUrl trustIndex")
+        .skip(skip)
+        .limit(limit),
+      LoanRequest.countDocuments(requestQuery),
+    ]);
 
     res.status(200).json({
       status: "success",
       results: requests.length,
+      totalPages: Math.ceil(total / limit),
+      page,
       data: {
         requests,
       },
