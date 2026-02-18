@@ -2,6 +2,7 @@ import User from "../models/userModel.js";
 import LoanBrochure from "../models/loanBrochureModel.js";
 import Contract from "../models/contractModel.js";
 import PlatformRevenue from "../models/platformRevenueModel.js";
+import AppError from "../utils/AppError.js";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";
@@ -64,7 +65,7 @@ export const getPublicProfile = async (req, res, next) => {
       .populate("endorsementsReceived", "name avatarUrl trustIndex");
 
     if (!user) {
-      return next(new Error("User not found."));
+      return next(new AppError("User not found.", 404));
     }
 
     res.status(200).json({

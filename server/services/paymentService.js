@@ -3,6 +3,7 @@ const { StandardCheckoutClient, Env, StandardCheckoutPayRequest } = phonepe;
 
 import { randomUUID } from "crypto";
 import Contract from "../models/contractModel.js";
+import AppError from "../utils/AppError.js";
 
 // --- Initialize the PhonePe Client (Singleton Pattern) ---
 const clientId = process.env.PHONEPE_CLIENT_ID;
@@ -11,8 +12,9 @@ const clientVersion = process.env.PHONEPE_CLIENT_VERSION;
 const env = Env.SANDBOX;
 
 if (!clientId || !clientSecret || !clientVersion) {
-  throw new Error(
-    "PhonePe client credentials are not configured in .env file."
+  throw new AppError(
+    "PhonePe client credentials are not configured in .env file.",
+    500
   );
 }
 
@@ -42,7 +44,7 @@ export async function initiatePayment(
   try {
     const contract = await Contract.findById(contractId);
     if (!contract) {
-      throw new Error("Contract not found.");
+      throw new AppError("Contract not found.", 404);
     }
 
     // Determine amount based on payment type
@@ -59,7 +61,7 @@ export async function initiatePayment(
     }
 
     if (typeof amountToPay !== "number" || amountToPay <= 0) {
-      throw new Error("Invalid amount for payment.");
+      throw new AppError("Invalid amount for payment.", 400);
     }
 
     const amountInPaisa = Math.round(amountToPay * 100);
@@ -96,7 +98,7 @@ export async function initiatePayment(
       data: error.data,
     });
 
-    throw new Error("Could not initiate payment. Please try again later.");
+    throw new AppError("Could not initiate payment. Please try again later.", 502);
   }
 }
 

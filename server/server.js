@@ -153,17 +153,46 @@ app.use("/api/v1/admin", adminRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
+  // Handle Mongoose validation errors
+  if (err.name === "ValidationError") {
+    const messages = Object.values(err.errors).map((e) => e.message);
+    err.statusCode = 400;
+    err.message = messages.join(". ");
+    err.isOperational = true;
+  }
+
+  // Handle Mongoose duplicate key errors
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    err.statusCode = 409;
+    err.message = `Duplicate value for "${field}". Please use another value.`;
+    err.isOperational = true;
+  }
+
+  // Handle Mongoose cast errors (invalid ObjectId etc.)
+  if (err.name === "CastError") {
+    err.statusCode = 400;
+    err.message = `Invalid ${err.path}: ${err.value}`;
+    err.isOperational = true;
+  }
+
+  const statusCode = err.statusCode || 500;
+  const isProduction = process.env.NODE_ENV === "production";
+
   logger.error(`Error: ${err.message}`, {
     stack: err.stack,
     path: req.path,
     method: req.method,
+    statusCode,
   });
 
-  const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
-    message: err.message || "An error occurred", // Always show error message
-    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+    message:
+      statusCode === 500 && isProduction && !err.isOperational
+        ? "Something went wrong. Please try again later."
+        : err.message || "An error occurred",
+    ...(!isProduction && { stack: err.stack }),
   });
 });
 

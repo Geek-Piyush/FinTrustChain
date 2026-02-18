@@ -1,6 +1,8 @@
 import { promisify } from "util";
 import jwt from "jsonwebtoken";
 import User from "../models/userModel.js";
+import * as userCache from "../utils/userCache.js";
+import AppError from "../utils/AppError.js";
 
 export const protect = async (req, res, next) => {
   try {
@@ -15,19 +17,23 @@ export const protect = async (req, res, next) => {
 
     if (!token) {
       return next(
-        new Error("You are not logged in. Please log in to get access.")
+        new AppError("You are not logged in. Please log in to get access.", 401)
       );
     }
 
     // 2. Verify the token
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
-    // 3. Check if user still exists (include upiId which has select: false)
-    const currentUser = await User.findById(decoded.id).select("+upiId");
+    // 3. Check cache first, then DB
+    let currentUser = userCache.get(decoded.id);
     if (!currentUser) {
-      return next(
-        new Error("The user belonging to this token no longer exists.")
-      );
+      currentUser = await User.findById(decoded.id).select("+upiId");
+      if (!currentUser) {
+        return next(
+          new AppError("The user belonging to this token no longer exists.", 401)
+        );
+      }
+      userCache.set(decoded.id, currentUser);
     }
 
     // 4. Check if user changed password after the token was issued
@@ -40,7 +46,7 @@ export const protect = async (req, res, next) => {
       // If the token was issued *before* the password was changed, it's invalid.
       if (decoded.iat < changedTimestamp) {
         return next(
-          new Error("User recently changed password. Please log in again.")
+          new AppError("User recently changed password. Please log in again.", 401)
         );
       }
     }
@@ -49,7 +55,7 @@ export const protect = async (req, res, next) => {
     req.user = currentUser;
     next();
   } catch (error) {
-    return next(new Error("Invalid token. Please log in again."));
+    return next(new AppError("Invalid token. Please log in again.", 401));
   }
 };
 
@@ -58,7 +64,7 @@ export const restrictTo = (...roles) => {
     // Check both `role` (ADMIN/USER) and `currentRole` (LENDER/RECEIVER)
     if (!roles.includes(req.user.role) && !roles.includes(req.user.currentRole)) {
       return next(
-        new Error("You do not have permission to perform this action.")
+        new AppError("You do not have permission to perform this action.", 403)
       );
     }
     next();

@@ -71,6 +71,15 @@ const contractSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// --- Indexes for common query patterns ---
+// Dashboard: find contracts where user is receiver/lender/guarantor
+contractSchema.index({ receiver: 1, status: 1, createdAt: -1 });
+contractSchema.index({ lender: 1, status: 1, createdAt: -1 });
+contractSchema.index({ guarantor: 1, status: 1, createdAt: -1 });
+// Scheduler: find by status + date fields
+contractSchema.index({ status: 1, endDate: 1 });
+contractSchema.index({ status: 1, updatedAt: 1 });
+
 // --- Mongoose Middleware for Notifications (Corrected) ---
 
 // Step 1: Use a 'pre' hook to reliably detect the state BEFORE the save.

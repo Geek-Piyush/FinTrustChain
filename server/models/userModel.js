@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { createNotification } from "../services/notificationService.js";
+import * as userCache from "../utils/userCache.js";
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -83,6 +84,11 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Invalidate auth cache whenever a user document is saved
+userSchema.post("save", function (doc) {
+  userCache.invalidate(doc._id);
+});
 
 const User = mongoose.model("User", userSchema);
 

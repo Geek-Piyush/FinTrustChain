@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import Contract from "../models/contractModel.js";
 import User from "../models/userModel.js";
+import CronLock from "../models/cronLockModel.js";
 import { settleDefaultedLoan } from "../services/loanSettlementServices.js";
 import * as trustIndexService from "../services/trustIndexService.js";
 import * as userService from "../services/userService.js";
@@ -8,6 +9,11 @@ import { createNotification } from "../services/notificationService.js";
 import { sendOverdueEMIEmail } from "../utils/email.js";
 
 const checkOverdueConfirmations = async () => {
+  const lockAcquired = await CronLock.acquire("checkOverdueConfirmations", 5 * 60 * 1000);
+  if (!lockAcquired) {
+    console.log("checkOverdueConfirmations: skipped (another instance holds the lock)");
+    return;
+  }
   console.log(
     "Running scheduled job: Checking for overdue receipt confirmations..."
   );
@@ -38,10 +44,17 @@ const checkOverdueConfirmations = async () => {
     );
   } catch (error) {
     console.error("Error during scheduled job execution:", error);
+  } finally {
+    await CronLock.release("checkOverdueConfirmations");
   }
 };
 
 export const checkLoanDefaults = async () => {
+  const lockAcquired = await CronLock.acquire("checkLoanDefaults", 10 * 60 * 1000);
+  if (!lockAcquired) {
+    console.log("checkLoanDefaults: skipped (another instance holds the lock)");
+    return;
+  }
   console.log("Running scheduled job: Checking for loan defaults...");
   try {
     const now = new Date();
@@ -67,6 +80,8 @@ export const checkLoanDefaults = async () => {
     );
   } catch (error) {
     console.error("Error during loan default check:", error);
+  } finally {
+    await CronLock.release("checkLoanDefaults");
   }
 };
 
@@ -84,6 +99,11 @@ export const checkLoanDefaults = async () => {
  * This does NOT default the loan — default only happens when endDate passes.
  */
 export const checkOverdueEMIs = async () => {
+  const lockAcquired = await CronLock.acquire("checkOverdueEMIs", 15 * 60 * 1000);
+  if (!lockAcquired) {
+    console.log("checkOverdueEMIs: skipped (another instance holds the lock)");
+    return;
+  }
   console.log("Running scheduled job: Checking for overdue EMIs...");
   try {
     const now = new Date();
@@ -194,6 +214,8 @@ export const checkOverdueEMIs = async () => {
     );
   } catch (error) {
     console.error("Error during overdue EMI check:", error);
+  } finally {
+    await CronLock.release("checkOverdueEMIs");
   }
 };
 

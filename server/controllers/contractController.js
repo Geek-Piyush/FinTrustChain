@@ -10,6 +10,7 @@ import path from "path";
 import * as paymentService from "../services/paymentService.js";
 import { generateEMISchedule } from "../services/emiService.js";
 import { sendContractReadyEmail } from "../utils/email.js";
+import AppError from "../utils/AppError.js";
 
 // --- MULTER SETUP for Payment Proof ---
 const ALLOWED_PROOF_MIMES = [
@@ -524,7 +525,7 @@ export const getContractPDF = async (req, res, next) => {
     );
 
     if (!contract) {
-      return next(new Error("Contract not found."));
+      return next(new AppError("Contract not found.", 404));
     }
 
     // Check if the user is authorized to access this contract
@@ -543,7 +544,7 @@ export const getContractPDF = async (req, res, next) => {
 
     // Check if PDF filename exists
     if (!contract.pdfFilename) {
-      return next(new Error("Contract PDF not found."));
+      return next(new AppError("Contract PDF not found.", 404));
     }
 
     // Construct the full file path
@@ -560,7 +561,7 @@ export const getContractPDF = async (req, res, next) => {
       .catch(() => false);
 
     if (!fileExists) {
-      return next(new Error("Contract PDF file does not exist on the server."));
+      return next(new AppError("Contract PDF file does not exist on the server.", 404));
     }
 
     // Set response headers for PDF download

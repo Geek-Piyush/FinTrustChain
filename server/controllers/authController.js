@@ -6,6 +6,7 @@ import path from "path";
 import User from "../models/userModel.js";
 import crypto from "crypto";
 import Email from "../utils/email.js";
+import AppError from "../utils/AppError.js";
 
 const multerStorage = multer.memoryStorage();
 
@@ -54,10 +55,10 @@ export const registerUser = async (req, res, next) => {
 
     // A) VALIDATE INPUT
     if (!name || !email || !password || !passwordConfirm) {
-      return next(new Error("Please provide all required fields."));
+      return next(new AppError("Please provide all required fields.", 400));
     }
     if (password !== passwordConfirm) {
-      return next(new Error("Passwords do not match."));
+      return next(new AppError("Passwords do not match.", 400));
     }
 
     // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
@@ -72,7 +73,7 @@ export const registerUser = async (req, res, next) => {
     }
 
     if (!req.file) {
-      return next(new Error("E-signature image is required."));
+      return next(new AppError("E-signature image is required.", 400));
     }
 
     // B) HASH THE PASSWORD
@@ -162,7 +163,7 @@ export const registerUser = async (req, res, next) => {
     console.log("✅ User registered successfully");
   } catch (error) {
     if (error.code === 11000) {
-      return next(new Error("An account with this email already exists."));
+      return next(new AppError("An account with this email already exists.", 409));
     }
     next(error);
   }
@@ -175,7 +176,7 @@ export const loginUser = async (req, res, next) => {
 
     // 1. Check if email and password exist
     if (!email || !password) {
-      return next(new Error("Please provide email and password."));
+      return next(new AppError("Please provide email and password.", 400));
     }
 
     // 2. Find the user by email
@@ -184,12 +185,12 @@ export const loginUser = async (req, res, next) => {
     // 3. If user doesn't exist or password doesn't match, send error
     // We use a generic error for security to not reveal which field was incorrect.
     if (!user || !(await bcryptjs.compare(password, user.passwordHash))) {
-      return next(new Error("Incorrect email or password."));
+      return next(new AppError("Incorrect email or password.", 401));
     }
 
     // 4. Check if the user's email is verified
     if (!user.verification.emailVerified) {
-      return next(new Error("Please verify your email before logging in."));
+      return next(new AppError("Please verify your email before logging in.", 403));
     }
 
     // 5. If everything is correct, send token to client
@@ -217,7 +218,7 @@ export const verifyEmail = async (req, res, next) => {
 
     // 3. If no user is found, the token is invalid or has expired
     if (!user) {
-      return next(new Error("Token is invalid or has expired."));
+      return next(new AppError("Token is invalid or has expired.", 400));
     }
 
     // 4. If found, update the user to be verified
@@ -239,7 +240,7 @@ export const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
 
     if (!email) {
-      return next(new Error("Please provide your email address."));
+      return next(new AppError("Please provide your email address.", 400));
     }
 
     const user = await User.findOne({ email });
@@ -297,11 +298,11 @@ export const resetPassword = async (req, res, next) => {
     const { password, passwordConfirm } = req.body;
 
     if (!password || !passwordConfirm) {
-      return next(new Error("Please provide a new password and confirmation."));
+      return next(new AppError("Please provide a new password and confirmation.", 400));
     }
 
     if (password !== passwordConfirm) {
-      return next(new Error("Passwords do not match."));
+      return next(new AppError("Passwords do not match.", 400));
     }
 
     // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
@@ -327,7 +328,7 @@ export const resetPassword = async (req, res, next) => {
     });
 
     if (!user) {
-      return next(new Error("Reset token is invalid or has expired."));
+      return next(new AppError("Reset token is invalid or has expired.", 400));
     }
 
     // Set new password
