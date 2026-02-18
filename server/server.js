@@ -187,7 +187,7 @@ app.use((err, req, res, next) => {
   });
 
   res.status(statusCode).json({
-    success: false,
+    status: "error",
     message:
       statusCode === 500 && isProduction && !err.isOperational
         ? "Something went wrong. Please try again later."
@@ -199,7 +199,7 @@ app.use((err, req, res, next) => {
 // 404 Handler
 app.use((req, res) => {
   res.status(404).json({
-    success: false,
+    status: "error",
     message: "Route not found",
   });
 });
@@ -209,6 +209,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`Server running on port ${PORT}`);
+
   startScheduler();
 });

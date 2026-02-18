@@ -2,6 +2,7 @@ import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import fs from "fs/promises";
 import path from "path";
+import AppError from "../utils/AppError.js";
 
 export async function createContractPDF(data, filename) {
   const templatePath = path.resolve("./public/templates/FinTrustChain.pdf");
@@ -135,7 +136,7 @@ export async function applySignatureToPDF(contractFilename, user, role) {
   const pdfDoc = await PDFDocument.load(contractBytes);
 
   const signaturePath = path.resolve(
-    `./public/img/esigns/${user.eSign.filename}`
+    `./public/img/esigns/${user.eSign.filename}`,
   );
   const signatureBytes = await fs.readFile(signaturePath);
   const signatureImage = await pdfDoc.embedPng(signatureBytes);
@@ -149,7 +150,7 @@ export async function applySignatureToPDF(contractFilename, user, role) {
 
   const { pageIndex, ...coords } = signatureCoords[role];
   if (pageIndex === undefined) {
-    throw new Error(`Invalid role provided for signature: ${role}`);
+    throw new AppError(`Invalid role provided for signature: ${role}`, 400);
   }
   const page = pdfDoc.getPage(pageIndex);
   page.drawImage(signatureImage, coords);
@@ -165,9 +166,7 @@ export async function applySignatureToPDF(contractFilename, user, role) {
  * Page 3 (closure page) gets only: date, receiver name, lender name, guarantor name.
  */
 export async function createClosurePDF(data, filename) {
-  const templatePath = path.resolve(
-    "./public/templates/Closure_Agreement.pdf"
-  );
+  const templatePath = path.resolve("./public/templates/Closure_Agreement.pdf");
   const templateBytes = await fs.readFile(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes);
 

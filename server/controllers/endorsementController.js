@@ -3,8 +3,10 @@ import User from "../models/userModel.js";
 import Endorsement from "../models/endorsementModel.js";
 import * as trustIndexService from "../services/trustIndexService.js";
 import * as userService from "../services/userService.js";
+import AppError from "../utils/AppError.js";
 
-//POST /endorsements
+// POST /endorsements
+// NOTE: Keeps manual try/catch because of DB session with abort on error
 export const createEndorsement = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -14,7 +16,7 @@ export const createEndorsement = async (req, res, next) => {
 
     // --- 1. Validation and Business Rules ---
     if (endorser.id === receiverId) {
-      throw new Error("You cannot endorse yourself.");
+      throw new AppError("You cannot endorse yourself.", 400);
     }
 
     // --- 2. Check for existing endorsement relationship ---
@@ -25,10 +27,11 @@ export const createEndorsement = async (req, res, next) => {
 
     if (existingEndorsement) {
       if (existingEndorsement.status === "ACTIVE") {
-        throw new Error("You have already endorsed this user.");
+        throw new AppError("You have already endorsed this user.", 409);
       } else if (existingEndorsement.status === "REMOVED") {
-        throw new Error(
-          "You cannot re-endorse a user after removing a previous endorsement."
+        throw new AppError(
+          "You cannot re-endorse a user after removing a previous endorsement.",
+          409,
         );
       }
     }
@@ -43,21 +46,27 @@ export const createEndorsement = async (req, res, next) => {
     }).session(session);
 
     if (endorsementCount >= 4) {
-      throw new Error("You can only endorse a maximum of 4 users per month.");
+      throw new AppError(
+        "You can only endorse a maximum of 4 users per month.",
+        400,
+      );
     }
 
     // --- 4. Calculate TI Gain and Update Users ---
     const receiver = await User.findById(receiverId).session(session);
     if (!receiver)
-      throw new Error("The user you are trying to endorse does not exist.");
+      throw new AppError(
+        "The user you are trying to endorse does not exist.",
+        404,
+      );
 
     const tiGain = trustIndexService.getInitialEndorsementGain(
-      receiver.trustIndex
+      receiver.trustIndex,
     );
     await userService.updateTrustIndex(
       receiver,
       tiGain,
-      "Received Endorsement"
+      "Received Endorsement",
     );
     receiver.endorsementsReceived.push(endorser.id);
     endorser.endorsementsGiven.push(receiver.id);
@@ -67,7 +76,7 @@ export const createEndorsement = async (req, res, next) => {
     await endorser.save({ session });
     await Endorsement.create(
       [{ endorser: endorser.id, receiver: receiver.id, status: "ACTIVE" }],
-      { session }
+      { session },
     );
 
     await session.commitTransaction();
@@ -83,7 +92,7 @@ export const createEndorsement = async (req, res, next) => {
 };
 
 // DELETE /endorsements/:id
-
+// NOTE: Keeps manual try/catch because of DB session with abort on error
 export const removeEndorsement = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -99,16 +108,22 @@ export const removeEndorsement = async (req, res, next) => {
     }).session(session);
 
     if (!endorsement) {
-      throw new Error("You do not have an active endorsement for this user.");
+      throw new AppError(
+        "You do not have an active endorsement for this user.",
+        404,
+      );
     }
 
     // --- 2. Calculate TI Loss and Update Users ---
     const receiver = await User.findById(receiverId).session(session);
     if (!receiver)
-      throw new Error("The user you are trying to un-endorse does not exist.");
+      throw new AppError(
+        "The user you are trying to un-endorse does not exist.",
+        404,
+      );
 
     const tiLoss = trustIndexService.getInitialEndorsementLoss(
-      receiver.trustIndex
+      receiver.trustIndex,
     );
     receiver.trustIndex -= tiLoss;
 
@@ -116,7 +131,6 @@ export const removeEndorsement = async (req, res, next) => {
     receiver.endorsementsReceived.pull(endorser.id);
 
     // --- 3. Update Endorsement Status ---
-    // Instead of deleting, we update the status to 'REMOVED'.
     endorsement.status = "REMOVED";
 
     // --- 4. Save All Changes ---

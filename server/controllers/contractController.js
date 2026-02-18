@@ -11,6 +11,8 @@ import * as paymentService from "../services/paymentService.js";
 import { generateEMISchedule } from "../services/emiService.js";
 import { sendContractReadyEmail } from "../utils/email.js";
 import AppError from "../utils/AppError.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import logger from "../utils/logger.js";
 
 // --- MULTER SETUP for Payment Proof ---
 const ALLOWED_PROOF_MIMES = [
@@ -31,7 +33,7 @@ const proofStorage = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(
       null,
-      `proof-${req.params.id}-${uniqueSuffix}${path.extname(file.originalname)}`
+      `proof-${req.params.id}-${uniqueSuffix}${path.extname(file.originalname)}`,
     );
   },
 });
@@ -41,10 +43,11 @@ const proofFileFilter = (req, file, cb) => {
     cb(null, true);
   } else {
     cb(
-      new Error(
-        "Invalid file type. Only images (JPEG, PNG, GIF, WebP, BMP, TIFF) and PDF files are allowed."
+      new AppError(
+        "Invalid file type. Only images (JPEG, PNG, GIF, WebP, BMP, TIFF) and PDF files are allowed.",
+        400,
       ),
-      false
+      false,
     );
   }
 };
@@ -55,8 +58,8 @@ export const uploadProof = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 }).single("proof");
 
+// Internal function — NOT a route handler. Keeps its own try/catch for the DB session.
 export const createContract = async loanRequestId => {
-  // This function remains the same as your reference.
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -67,14 +70,17 @@ export const createContract = async loanRequestId => {
       .session(session);
 
     if (!loanRequest || !loanRequest.selectedBrochure) {
-      throw new Error("Valid loan request with a selected brochure not found.");
+      throw new AppError(
+        "Valid loan request with a selected brochure not found.",
+        404,
+      );
     }
 
     const { receiver, guarantor, selectedBrochure } = loanRequest;
     const { lender } = selectedBrochure;
     const dateStr = new Date().toISOString().split("T")[0];
     const contractId = `C-${dateStr}-${receiver.id.slice(-4)}-${lender.id.slice(
-      -4
+      -4,
     )}`;
     const pdfFilename = `Contract-${contractId}-unsigned.pdf`;
 
@@ -86,7 +92,7 @@ export const createContract = async loanRequestId => {
       repaymentPeriodDisplay: `${selectedBrochure.tenorDays} days`,
       startDateDisplay: new Date().toLocaleDateString("en-GB"),
       endDateDisplay: new Date(
-        Date.now() + selectedBrochure.tenorDays * 24 * 60 * 60 * 1000
+        Date.now() + selectedBrochure.tenorDays * 24 * 60 * 60 * 1000,
       ).toLocaleDateString("en-GB"),
       receiver: { name: receiver.name, tiAtSigning: receiver.trustIndex },
       guarantor: { name: guarantor.name, tiAtSigning: guarantor.trustIndex },
@@ -110,11 +116,11 @@ export const createContract = async loanRequestId => {
           status: "PENDING_SIGNATURES",
         },
       ],
-      { session }
+      { session },
     );
 
     await session.commitTransaction();
-    console.log(`Contract ${newContract[0].id} created. Ready for signatures.`);
+    logger.info(`Contract ${newContract[0].id} created. Ready for signatures.`);
 
     // Email all parties that the contract is ready
     await sendContractReadyEmail(receiver, contractId);
@@ -124,411 +130,371 @@ export const createContract = async loanRequestId => {
     return newContract[0];
   } catch (error) {
     await session.abortTransaction();
-    console.error("Error creating contract:", error);
+    logger.error("Error creating contract", { error: error.message });
     throw error;
   } finally {
     session.endSession();
   }
 };
 
-//POST /contracts/:id/sign
-export const signContract = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
+// POST /contracts/:id/sign
+export const signContract = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
 
-    const contract = await Contract.findById(id);
-    if (!contract || contract.status !== "PENDING_SIGNATURES") {
-      throw new Error("This contract is not available for signing.");
-    }
-
-    let userRole = null;
-    if (contract.receiver.equals(user.id)) userRole = "receiver";
-    else if (contract.guarantor.equals(user.id)) userRole = "guarantor";
-    else if (contract.lender.equals(user.id)) userRole = "lender";
-
-    if (!userRole) throw new Error("You are not a party to this contract.");
-    if (contract.signatures[userRole])
-      throw new Error("You have already signed this contract.");
-
-    await pdfService.applySignatureToPDF(contract.pdfFilename, user, userRole);
-    contract.signatures[userRole] = true;
-
-    const { receiver, guarantor, lender } = contract.signatures;
-    if (receiver && guarantor && lender) {
-      contract.status = "AWAITING_DISBURSAL";
-
-      const oldFilename = contract.pdfFilename;
-      const newFilename = oldFilename.replace("-unsigned.pdf", "-signed.pdf");
-      const oldPath = path.resolve(`./public/contracts/${oldFilename}`);
-      const newPath = path.resolve(`./public/contracts/${newFilename}`);
-      await fs.rename(oldPath, newPath);
-      contract.pdfFilename = newFilename;
-    }
-
-    await contract.save();
-
-    res.status(200).json({
-      status: "success",
-      message: "Contract signed successfully.",
-      data: { contract },
-    });
-  } catch (error) {
-    next(error);
+  const contract = await Contract.findById(id);
+  if (!contract || contract.status !== "PENDING_SIGNATURES") {
+    throw new AppError("This contract is not available for signing.", 400);
   }
-};
 
-//POST /contracts/:id/confirm-disbursal
+  let userRole = null;
+  if (contract.receiver.equals(user.id)) userRole = "receiver";
+  else if (contract.guarantor.equals(user.id)) userRole = "guarantor";
+  else if (contract.lender.equals(user.id)) userRole = "lender";
+
+  if (!userRole)
+    throw new AppError("You are not a party to this contract.", 403);
+  if (contract.signatures[userRole])
+    throw new AppError("You have already signed this contract.", 400);
+
+  await pdfService.applySignatureToPDF(contract.pdfFilename, user, userRole);
+  contract.signatures[userRole] = true;
+
+  const { receiver, guarantor, lender } = contract.signatures;
+  if (receiver && guarantor && lender) {
+    contract.status = "AWAITING_DISBURSAL";
+
+    const oldFilename = contract.pdfFilename;
+    const newFilename = oldFilename.replace("-unsigned.pdf", "-signed.pdf");
+    const oldPath = path.resolve(`./public/contracts/${oldFilename}`);
+    const newPath = path.resolve(`./public/contracts/${newFilename}`);
+    await fs.rename(oldPath, newPath);
+    contract.pdfFilename = newFilename;
+  }
+
+  await contract.save();
+
+  res.status(200).json({
+    status: "success",
+    message: "Contract signed successfully.",
+    data: { contract },
+  });
+});
+
 // POST /contracts/:id/initiate-disbursal - Initiate disbursal payment via PhonePe
-export const initiateDisbursalPayment = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
+export const initiateDisbursalPayment = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
 
-    const contract = await Contract.findById(id);
+  const contract = await Contract.findById(id);
 
-    if (!contract || !contract.lender.equals(user.id)) {
-      throw new Error("Contract not found or you are not the lender.");
-    }
-    if (contract.status !== "AWAITING_DISBURSAL") {
-      throw new Error("This contract is not awaiting disbursal.");
-    }
-
-    // Initiate PhonePe payment for disbursal
-    const redirectUrl = await paymentService.initiatePayment(
-      id,
-      user,
-      contract.principal,
-      "DISBURSAL"
-    );
-
-    res.status(200).json({
-      status: "success",
-      message: "Disbursal payment initiated via PhonePe.",
-      data: { redirectUrl },
-    });
-  } catch (error) {
-    next(error);
+  if (!contract || !contract.lender.equals(user.id)) {
+    throw new AppError("Contract not found or you are not the lender.", 404);
   }
-};
-
-export const confirmDisbursal = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
-    const { transactionId } = req.body; // Get transactionId from the form data
-
-    if (!req.file) {
-      throw new Error("A screenshot of the payment proof is required.");
-    }
-    if (!transactionId) {
-      throw new Error("The payment transaction ID is required.");
-    }
-
-    const contract = await Contract.findById(id);
-
-    if (!contract || !contract.lender.equals(user.id)) {
-      throw new Error("Contract not found or you are not the lender.");
-    }
-    if (contract.status !== "AWAITING_DISBURSAL") {
-      throw new Error("This contract is not awaiting disbursal.");
-    }
-
-    // Create a transaction log with the new proof fields
-    await Transaction.create({
-      contract: contract.id,
-      fromUser: contract.lender,
-      toUser: contract.receiver,
-      amount: contract.principal,
-      status: "DISBURSED",
-      proofOfPaymentFilename: req.file.filename,
-      paymentTransactionId: transactionId,
-    });
-
-    contract.status = "AWAITING_RECEIPT_CONFIRMATION";
-    await contract.save();
-
-    res.status(200).json({
-      status: "success",
-      message: "Disbursal confirmed. Awaiting receiver to confirm receipt.",
-      data: { contract },
-    });
-  } catch (error) {
-    next(error);
+  if (contract.status !== "AWAITING_DISBURSAL") {
+    throw new AppError("This contract is not awaiting disbursal.", 400);
   }
-};
 
-//NEW: POST /contracts/:id/confirm-receipt
+  // Initiate PhonePe payment for disbursal
+  const redirectUrl = await paymentService.initiatePayment(
+    id,
+    user,
+    contract.principal,
+    "DISBURSAL",
+  );
 
-export const confirmReceipt = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
+  res.status(200).json({
+    status: "success",
+    message: "Disbursal payment initiated via PhonePe.",
+    data: { redirectUrl },
+  });
+});
 
-    const contract = await Contract.findById(id);
+export const confirmDisbursal = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
+  const { transactionId } = req.body;
 
-    console.log("=== CONFIRM RECEIPT DEBUG ===");
-    console.log("Contract ID:", id);
-    console.log("Contract Status:", contract?.status);
-    console.log("User ID:", user.id);
-    console.log("Receiver ID:", contract?.receiver);
-
-    // Validation
-    if (!contract || !contract.receiver.equals(user.id)) {
-      throw new Error(
-        "Contract not found or you are not the receiver for this contract."
-      );
-    }
-    if (contract.status !== "AWAITING_RECEIPT_CONFIRMATION") {
-      throw new Error("This contract is not awaiting receipt confirmation.");
-    }
-
-    // Find and update the transaction log
-    console.log("Searching for transaction with contract:", contract.id);
-    const transaction = await Transaction.findOne({
-      contract: contract.id,
-      status: "DISBURSED",
-    });
-    console.log("Transaction found:", transaction);
-
-    // Also check ALL transactions for this contract
-    const allTransactions = await Transaction.find({ contract: contract.id });
-    console.log("All transactions for this contract:", allTransactions);
-
-    if (!transaction) {
-      throw new Error(
-        "No pending disbursal transaction found for this contract."
-      );
-    }
-    transaction.status = "CONFIRMED";
-    await transaction.save();
-
-    // --- FINAL TRIGGER: Activate the loan ---
-    contract.status = "ACTIVE";
-    contract.startDate = new Date();
-    contract.endDate = new Date(
-      Date.now() + contract.tenorDays * 24 * 60 * 60 * 1000
-    );
-
-    // Generate EMI repayment schedule
-    contract.repaymentSchedule = generateEMISchedule(contract);
-    console.log(
-      `Generated ${contract.repaymentSchedule.length} EMI installments for contract ${contract.id}`
-    );
-
-    await contract.save();
-
-    res.status(200).json({
-      status: "success",
-      message:
-        "Receipt confirmed. The loan is now active and repayment has begun.",
-      data: { contract },
-    });
-  } catch (error) {
-    next(error);
+  if (!req.file) {
+    throw new AppError("A screenshot of the payment proof is required.", 400);
   }
-};
+  if (!transactionId) {
+    throw new AppError("The payment transaction ID is required.", 400);
+  }
+
+  const contract = await Contract.findById(id);
+
+  if (!contract || !contract.lender.equals(user.id)) {
+    throw new AppError("Contract not found or you are not the lender.", 404);
+  }
+  if (contract.status !== "AWAITING_DISBURSAL") {
+    throw new AppError("This contract is not awaiting disbursal.", 400);
+  }
+
+  // Create a transaction log with the new proof fields
+  await Transaction.create({
+    contract: contract.id,
+    fromUser: contract.lender,
+    toUser: contract.receiver,
+    amount: contract.principal,
+    status: "DISBURSED",
+    proofOfPaymentFilename: req.file.filename,
+    paymentTransactionId: transactionId,
+  });
+
+  contract.status = "AWAITING_RECEIPT_CONFIRMATION";
+  await contract.save();
+
+  res.status(200).json({
+    status: "success",
+    message: "Disbursal confirmed. Awaiting receiver to confirm receipt.",
+    data: { contract },
+  });
+});
+
+// POST /contracts/:id/confirm-receipt
+export const confirmReceipt = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
+
+  const contract = await Contract.findById(id);
+
+  // Validation
+  if (!contract || !contract.receiver.equals(user.id)) {
+    throw new AppError(
+      "Contract not found or you are not the receiver for this contract.",
+      404,
+    );
+  }
+  if (contract.status !== "AWAITING_RECEIPT_CONFIRMATION") {
+    throw new AppError(
+      "This contract is not awaiting receipt confirmation.",
+      400,
+    );
+  }
+
+  // Find and update the transaction log
+  const transaction = await Transaction.findOne({
+    contract: contract.id,
+    status: "DISBURSED",
+  });
+
+  if (!transaction) {
+    throw new AppError(
+      "No pending disbursal transaction found for this contract.",
+      404,
+    );
+  }
+  transaction.status = "CONFIRMED";
+  await transaction.save();
+
+  // --- FINAL TRIGGER: Activate the loan ---
+  contract.status = "ACTIVE";
+  contract.startDate = new Date();
+  contract.endDate = new Date(
+    Date.now() + contract.tenorDays * 24 * 60 * 60 * 1000,
+  );
+
+  // Generate EMI repayment schedule
+  contract.repaymentSchedule = generateEMISchedule(contract);
+  logger.info(
+    `Generated ${contract.repaymentSchedule.length} EMI installments for contract ${contract.id}`,
+  );
+
+  await contract.save();
+
+  res.status(200).json({
+    status: "success",
+    message:
+      "Receipt confirmed. The loan is now active and repayment has begun.",
+    data: { contract },
+  });
+});
 
 // POST /contracts/:id/guarantor-pay
+export const initiateGuarantorPayment = asyncHandler(async (req, res) => {
+  const guarantor = req.user;
+  const { id } = req.params;
 
-export const initiateGuarantorPayment = async (req, res, next) => {
-  try {
-    const guarantor = req.user;
-    const { id } = req.params;
+  const contract = await Contract.findById(id);
 
-    const contract = await Contract.findById(id);
-
-    // Validation
-    if (!contract || !contract.guarantor.equals(guarantor.id)) {
-      throw new Error(
-        "Contract not found or you are not the guarantor for this contract."
-      );
-    }
-    if (contract.status !== "DEFAULT") {
-      throw new Error("This contract is not in a defaulted state.");
-    }
-
-    // The guarantor is liable for 50% of the remaining unpaid amount
-    let guarantorLiability = contract.guarantorLiabilityAmount;
-    if (!guarantorLiability) {
-      // Fallback: calculate from unpaid EMIs
-      const remaining = contract.repaymentSchedule
-        .filter((emi) => emi.status !== "PAID")
-        .reduce((sum, emi) => sum + emi.amountDue, 0);
-      guarantorLiability = Math.round(remaining * 0.5);
-    }
-
-    // We reuse our existing payment service, passing the guarantor as the user and the specific liability amount.
-    const redirectUrl = await paymentService.initiatePayment(
-      id,
-      guarantor,
-      guarantorLiability,
-      "GUARANTOR_PAY"
+  // Validation
+  if (!contract || !contract.guarantor.equals(guarantor.id)) {
+    throw new AppError(
+      "Contract not found or you are not the guarantor for this contract.",
+      404,
     );
-
-    res.status(200).json({
-      status: "success",
-      message: "Guarantor payment initiated successfully.",
-      data: {
-        redirectUrl,
-      },
-    });
-  } catch (error) {
-    next(error);
   }
-};
-
-// NEW: GET /contracts/:id/disbursal-proof
-
-export const getDisbursalProof = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params; // This is the Contract ID
-
-    const contract = await Contract.findById(id);
-
-    // Validation
-    if (!contract || !contract.receiver.equals(user.id)) {
-      throw new Error(
-        "Contract not found or you are not the receiver for this contract."
-      );
-    }
-    if (contract.status !== "AWAITING_RECEIPT_CONFIRMATION") {
-      throw new Error(
-        "Proof of payment is only available when the contract is awaiting your confirmation."
-      );
-    }
-
-    // Find the transaction log associated with this contract
-    const transaction = await Transaction.findOne({
-      contract: contract.id,
-      status: "DISBURSED",
-    });
-
-    if (!transaction) {
-      throw new Error(
-        "No disbursal proof has been uploaded for this contract yet."
-      );
-    }
-
-    // Construct the full URL for the image
-    const imageUrl = `${req.protocol}://${req.get("host")}/img/proofs/${
-      transaction.proofOfPaymentFilename
-    }`;
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        transactionId: transaction.paymentTransactionId,
-        proofImageUrl: imageUrl,
-        uploadedAt: transaction.createdAt,
-      },
-    });
-  } catch (error) {
-    next(error);
+  if (contract.status !== "DEFAULT") {
+    throw new AppError("This contract is not in a defaulted state.", 400);
   }
-};
 
-export const getContractDetails = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params; // The Contract ID
-
-    const contract = await Contract.findById(id)
-      .populate("lender", "name avatarUrl")
-      .populate("receiver", "name avatarUrl")
-      .populate("guarantor", "name avatarUrl");
-
-    if (!contract) {
-      throw new Error("Contract not found.");
-    }
-
-    // --- Security Check ---
-    // Ensure the logged-in user is a party to this contract
-    const isParty =
-      contract.lender._id.equals(user.id) ||
-      contract.receiver._id.equals(user.id) ||
-      contract.guarantor._id.equals(user.id);
-
-    if (!isParty) {
-      throw new Error("You are not authorized to view this contract.");
-    }
-
-    // Calculate total payable amount (principal + interest)
-    const totalPayable =
-      contract.principal + (contract.principal * contract.interestRate) / 100;
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        contract: {
-          ...contract.toObject(),
-          totalPayable,
-        },
-      },
-    });
-  } catch (error) {
-    next(error);
+  // The guarantor is liable for 50% of the remaining unpaid amount
+  let guarantorLiability = contract.guarantorLiabilityAmount;
+  if (!guarantorLiability) {
+    // Fallback: calculate from unpaid EMIs
+    const remaining = contract.repaymentSchedule
+      .filter(emi => emi.status !== "PAID")
+      .reduce((sum, emi) => sum + emi.amountDue, 0);
+    guarantorLiability = Math.round(remaining * 0.5);
   }
-};
+
+  // We reuse our existing payment service, passing the guarantor as the user and the specific liability amount.
+  const redirectUrl = await paymentService.initiatePayment(
+    id,
+    guarantor,
+    guarantorLiability,
+    "GUARANTOR_PAY",
+  );
+
+  res.status(200).json({
+    status: "success",
+    message: "Guarantor payment initiated successfully.",
+    data: {
+      redirectUrl,
+    },
+  });
+});
+
+// GET /contracts/:id/disbursal-proof
+export const getDisbursalProof = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
+
+  const contract = await Contract.findById(id);
+
+  // Validation
+  if (!contract || !contract.receiver.equals(user.id)) {
+    throw new AppError(
+      "Contract not found or you are not the receiver for this contract.",
+      404,
+    );
+  }
+  if (contract.status !== "AWAITING_RECEIPT_CONFIRMATION") {
+    throw new AppError(
+      "Proof of payment is only available when the contract is awaiting your confirmation.",
+      400,
+    );
+  }
+
+  // Find the transaction log associated with this contract
+  const transaction = await Transaction.findOne({
+    contract: contract.id,
+    status: "DISBURSED",
+  });
+
+  if (!transaction) {
+    throw new AppError(
+      "No disbursal proof has been uploaded for this contract yet.",
+      404,
+    );
+  }
+
+  // Construct the full URL for the image
+  const imageUrl = `${req.protocol}://${req.get("host")}/img/proofs/${
+    transaction.proofOfPaymentFilename
+  }`;
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      transactionId: transaction.paymentTransactionId,
+      proofImageUrl: imageUrl,
+      uploadedAt: transaction.createdAt,
+    },
+  });
+});
+
+export const getContractDetails = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
+
+  const contract = await Contract.findById(id)
+    .populate("lender", "name avatarUrl")
+    .populate("receiver", "name avatarUrl")
+    .populate("guarantor", "name avatarUrl");
+
+  if (!contract) {
+    throw new AppError("Contract not found.", 404);
+  }
+
+  // --- Security Check ---
+  const isParty =
+    contract.lender._id.equals(user.id) ||
+    contract.receiver._id.equals(user.id) ||
+    contract.guarantor._id.equals(user.id);
+
+  if (!isParty) {
+    throw new AppError("You are not authorized to view this contract.", 403);
+  }
+
+  // Calculate total payable amount (principal + interest)
+  const totalPayable =
+    contract.principal + (contract.principal * contract.interestRate) / 100;
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      contract: {
+        ...contract.toObject(),
+        totalPayable,
+      },
+    },
+  });
+});
 
 // GET /contracts/:id/receiver-upi
 // Securely fetches the receiver's UPI ID for the lender of a specific contract.
-export const getReceiverUpi = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params; // The Contract ID
+export const getReceiverUpi = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
 
-    const contract = await Contract.findById(id).populate({
-      path: "receiver",
-      select: "name upiId",
-    });
+  const contract = await Contract.findById(id).populate({
+    path: "receiver",
+    select: "name upiId",
+  });
 
-    if (!contract) {
-      throw new Error("Contract not found.");
-    }
-
-    // --- SECURITY CHECK ---
-    // Ensure the logged-in user is the lender for this specific contract.
-    if (!contract.lender.equals(user.id)) {
-      throw new Error(
-        "You are not authorized to view the receiver's UPI ID for this contract."
-      );
-    }
-
-    // Check if the receiver has added a UPI ID
-    if (!contract.receiver.upiId) {
-      throw new Error("The receiver has not provided a UPI ID yet.");
-    }
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        receiverName: contract.receiver.name,
-        upiId: contract.receiver.upiId,
-      },
-    });
-  } catch (error) {
-    next(error);
+  if (!contract) {
+    throw new AppError("Contract not found.", 404);
   }
-};
+
+  // Ensure the logged-in user is the lender for this specific contract.
+  if (!contract.lender.equals(user.id)) {
+    throw new AppError(
+      "You are not authorized to view the receiver's UPI ID for this contract.",
+      403,
+    );
+  }
+
+  // Check if the receiver has added a UPI ID
+  if (!contract.receiver.upiId) {
+    throw new AppError("The receiver has not provided a UPI ID yet.", 404);
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      receiverName: contract.receiver.name,
+      upiId: contract.receiver.upiId,
+    },
+  });
+});
 
 // Fetch and download contract PDF
+// NOTE: Keeps manual try/catch because of the streaming pattern with fileStream.on("error")
 export const getContractPDF = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Find the contract
     const contract = await Contract.findById(id).populate(
-      "receiver lender guarantor"
+      "receiver lender guarantor",
     );
 
     if (!contract) {
       return next(new AppError("Contract not found.", 404));
     }
 
-    // Check if the user is authorized to access this contract
     const isAuthorized =
       userId === contract.receiver.id.toString() ||
       userId === contract.lender.id.toString() ||
@@ -536,32 +502,32 @@ export const getContractPDF = async (req, res, next) => {
 
     if (!isAuthorized) {
       return next(
-        new Error(
-          "You are not authorized to access this contract. Only involved parties can view the contract PDF."
-        )
+        new AppError(
+          "You are not authorized to access this contract. Only involved parties can view the contract PDF.",
+          403,
+        ),
       );
     }
 
-    // Check if PDF filename exists
     if (!contract.pdfFilename) {
       return next(new AppError("Contract PDF not found.", 404));
     }
 
-    // Construct the full file path
     const filePath = path.join(
       process.cwd(),
       "public/contracts",
-      contract.pdfFilename
+      contract.pdfFilename,
     );
 
-    // Check if file exists
     const fileExists = await fs
       .access(filePath)
       .then(() => true)
       .catch(() => false);
 
     if (!fileExists) {
-      return next(new AppError("Contract PDF file does not exist on the server.", 404));
+      return next(
+        new AppError("Contract PDF file does not exist on the server.", 404),
+      );
     }
 
     // Set response headers for PDF download
@@ -571,7 +537,7 @@ export const getContractPDF = async (req, res, next) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${downloadName}"`
+      `attachment; filename="${downloadName}"`,
     );
 
     // Stream the file to the client
@@ -580,7 +546,7 @@ export const getContractPDF = async (req, res, next) => {
 
     // Handle stream errors
     fileStream.on("error", error => {
-      console.error("Error reading PDF file:", error);
+      logger.error("Error reading PDF file", { error: error.message });
       if (!res.headersSent) {
         res.status(500).json({
           status: "error",
@@ -594,68 +560,66 @@ export const getContractPDF = async (req, res, next) => {
 };
 
 // GET /contracts/:id/emi-schedule
-export const getEMISchedule = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
+export const getEMISchedule = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
 
-    const contract = await Contract.findById(id);
-    if (!contract) {
-      throw new Error("Contract not found.");
-    }
-
-    // Security: only contract parties can view the schedule
-    const isParty =
-      contract.lender.equals(user.id) ||
-      contract.receiver.equals(user.id) ||
-      contract.guarantor.equals(user.id);
-    if (!isParty) {
-      throw new Error("You are not authorized to view this contract's EMI schedule.");
-    }
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        schedule: contract.repaymentSchedule || [],
-      },
-    });
-  } catch (error) {
-    next(error);
+  const contract = await Contract.findById(id);
+  if (!contract) {
+    throw new AppError("Contract not found.", 404);
   }
-};
+
+  // Security: only contract parties can view the schedule
+  const isParty =
+    contract.lender.equals(user.id) ||
+    contract.receiver.equals(user.id) ||
+    contract.guarantor.equals(user.id);
+  if (!isParty) {
+    throw new AppError(
+      "You are not authorized to view this contract's EMI schedule.",
+      403,
+    );
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      schedule: contract.repaymentSchedule || [],
+    },
+  });
+});
 
 // GET /contracts/:id/payment-history
-export const getPaymentHistory = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const { id } = req.params;
+export const getPaymentHistory = asyncHandler(async (req, res) => {
+  const user = req.user;
+  const { id } = req.params;
 
-    const contract = await Contract.findById(id);
-    if (!contract) {
-      throw new Error("Contract not found.");
-    }
-
-    // Security: only contract parties can view payment history
-    const isParty =
-      contract.lender.equals(user.id) ||
-      contract.receiver.equals(user.id) ||
-      contract.guarantor.equals(user.id);
-    if (!isParty) {
-      throw new Error("You are not authorized to view this contract's payment history.");
-    }
-
-    const transactions = await Transaction.find({ contract: id })
-      .sort({ createdAt: -1 })
-      .populate("fromUser", "name")
-      .populate("toUser", "name");
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        payments: transactions,
-      },
-    });
-  } catch (error) {
-    next(error);
+  const contract = await Contract.findById(id);
+  if (!contract) {
+    throw new AppError("Contract not found.", 404);
   }
-};
+
+  // Security: only contract parties can view payment history
+  const isParty =
+    contract.lender.equals(user.id) ||
+    contract.receiver.equals(user.id) ||
+    contract.guarantor.equals(user.id);
+  if (!isParty) {
+    throw new AppError(
+      "You are not authorized to view this contract's payment history.",
+      403,
+    );
+  }
+
+  const transactions = await Transaction.find({ contract: id })
+    .sort({ createdAt: -1 })
+    .populate("fromUser", "name")
+    .populate("toUser", "name");
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      payments: transactions,
+    },
+  });
+});

@@ -7,6 +7,8 @@ import User from "../models/userModel.js";
 import crypto from "crypto";
 import Email from "../utils/email.js";
 import AppError from "../utils/AppError.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import logger from "../utils/logger.js";
 
 const multerStorage = multer.memoryStorage();
 
@@ -15,10 +17,11 @@ const multerFilter = (req, file, next) => {
     next(null, true);
   } else {
     next(
-      new Error(
-        "Not an image! Please upload only an image for your e-signature."
+      new AppError(
+        "Not an image! Please upload only an image for your e-signature.",
+        400,
       ),
-      false
+      false,
     );
   }
 };
@@ -30,7 +33,7 @@ const upload = multer({
 
 export const uploadEsign = upload.single("eSign");
 
-const signToken = (id) => {
+const signToken = id => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
   });
@@ -49,6 +52,7 @@ const createSendToken = (user, statusCode, res) => {
   });
 };
 
+// NOTE: Keeps manual try/catch because of special duplicate key error handling (11000)
 export const registerUser = async (req, res, next) => {
   try {
     const { name, email, password, passwordConfirm } = req.body;
@@ -66,9 +70,10 @@ export const registerUser = async (req, res, next) => {
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&\#^()_\-+=])[A-Za-z\d@$!%*?&\#^()_\-+=]{8,}$/;
     if (!passwordRegex.test(password)) {
       return next(
-        new Error(
-          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character (@$!%*?&#^()_-+=)."
-        )
+        new AppError(
+          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character (@$!%*?&#^()_-+=).",
+          400,
+        ),
       );
     }
 
@@ -107,20 +112,20 @@ export const registerUser = async (req, res, next) => {
     // --- START: SEND VERIFICATION EMAIL ---
     try {
       const verificationURL = `${req.protocol}://${req.get(
-        "host"
+        "host",
       )}/api/v1/auth/verify-email/${verificationToken}`;
       await new Email(newUser, verificationURL).sendVerificationEmail();
-      console.log("✅ Verification email sent successfully");
+      logger.info("Verification email sent successfully");
     } catch (err) {
       // Clear verification token if email fails
       newUser.emailVerificationToken = undefined;
       newUser.emailVerificationExpires = undefined;
       await newUser.save({ validateBeforeSave: false });
-      console.error("EMAIL ERROR 📧:", err);
-
-      // Log warning but allow registration to continue
-      console.warn(
-        "⚠️  User registered but verification email could not be sent. Please configure SENDGRID_API_KEY."
+      logger.error("Email send error during registration", {
+        error: err.message,
+      });
+      logger.warn(
+        "User registered but verification email could not be sent. Please configure SENDGRID_API_KEY.",
       );
       // Don't return error - let registration succeed
     }
@@ -129,11 +134,9 @@ export const registerUser = async (req, res, next) => {
     // --- START: NEW FILE SAVING LOGIC ---
 
     // D) DEFINE A UNIQUE FILENAME
-    // Using the new user's ID makes the filename truly unique.
     const filename = `esign-${newUser._id}-${Date.now()}.jpeg`;
 
     // E) PROCESS IMAGE AND SAVE TO DISK
-    // This takes the image from memory, resizes it, and saves it to the public folder.
     await sharp(req.file.buffer)
       .resize(400, 200)
       .toFormat("png")
@@ -141,7 +144,6 @@ export const registerUser = async (req, res, next) => {
       .toFile(path.join("public/img/esigns", filename));
 
     // F) UPDATE USER WITH THE FILENAME
-
     newUser.eSign = { filename: filename };
     await newUser.save();
 
@@ -160,81 +162,74 @@ export const registerUser = async (req, res, next) => {
         user: newUser,
       },
     });
-    console.log("✅ User registered successfully");
+    logger.info("User registered successfully");
   } catch (error) {
     if (error.code === 11000) {
-      return next(new AppError("An account with this email already exists.", 409));
+      return next(
+        new AppError("An account with this email already exists.", 409),
+      );
     }
     next(error);
   }
 };
 
 // LOGIN LOGIC
-export const loginUser = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+export const loginUser = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-    // 1. Check if email and password exist
-    if (!email || !password) {
-      return next(new AppError("Please provide email and password.", 400));
-    }
-
-    // 2. Find the user by email
-    const user = await User.findOne({ email });
-
-    // 3. If user doesn't exist or password doesn't match, send error
-    // We use a generic error for security to not reveal which field was incorrect.
-    if (!user || !(await bcryptjs.compare(password, user.passwordHash))) {
-      return next(new AppError("Incorrect email or password.", 401));
-    }
-
-    // 4. Check if the user's email is verified
-    if (!user.verification.emailVerified) {
-      return next(new AppError("Please verify your email before logging in.", 403));
-    }
-
-    // 5. If everything is correct, send token to client
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
+  // 1. Check if email and password exist
+  if (!email || !password) {
+    throw new AppError("Please provide email and password.", 400);
   }
-};
+
+  // 2. Find the user by email
+  const user = await User.findOne({ email });
+
+  // 3. Generic error for security
+  if (!user || !(await bcryptjs.compare(password, user.passwordHash))) {
+    throw new AppError("Incorrect email or password.", 401);
+  }
+
+  // 4. Check if the user's email is verified
+  if (!user.verification.emailVerified) {
+    throw new AppError("Please verify your email before logging in.", 403);
+  }
+
+  // 5. If everything is correct, send token to client
+  createSendToken(user, 200, res);
+});
 
 // EMAIL VERIFICATION LOGIC
+export const verifyEmail = asyncHandler(async (req, res) => {
+  // 1. Get the token from the URL parameter
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(req.params.token)
+    .digest("hex");
 
-export const verifyEmail = async (req, res, next) => {
-  try {
-    // 1. Get the token from the URL parameter
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(req.params.token)
-      .digest("hex");
+  // 2. Find the user with the matching token that hasn't expired
+  const user = await User.findOne({
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: { $gt: Date.now() },
+  });
 
-    // 2. Find the user with the matching token that hasn't expired
-    const user = await User.findOne({
-      emailVerificationToken: hashedToken,
-      emailVerificationExpires: { $gt: Date.now() },
-    });
-
-    // 3. If no user is found, the token is invalid or has expired
-    if (!user) {
-      return next(new AppError("Token is invalid or has expired.", 400));
-    }
-
-    // 4. If found, update the user to be verified
-    user.verification.emailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-
-    // 5. Log the user in by sending a JWT token
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
+  // 3. If no user is found, the token is invalid or has expired
+  if (!user) {
+    throw new AppError("Token is invalid or has expired.", 400);
   }
-};
+
+  // 4. If found, update the user to be verified
+  user.verification.emailVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  // 5. Log the user in by sending a JWT token
+  createSendToken(user, 200, res);
+});
 
 // FORGOT PASSWORD — sends a reset token via email
+// NOTE: Keeps manual try/catch because inner try/catch for email sending
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -276,9 +271,14 @@ export const forgotPassword = async (req, res, next) => {
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      console.error("Email send failed:", err);
+      logger.error("Email send failed during password reset", {
+        error: err.message,
+      });
       return next(
-        new Error("Failed to send reset email. Please try again later.")
+        new AppError(
+          "Failed to send reset email. Please try again later.",
+          502,
+        ),
       );
     }
 
@@ -293,54 +293,49 @@ export const forgotPassword = async (req, res, next) => {
 };
 
 // RESET PASSWORD — validates token, enforces password strength
-export const resetPassword = async (req, res, next) => {
-  try {
-    const { password, passwordConfirm } = req.body;
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { password, passwordConfirm } = req.body;
 
-    if (!password || !passwordConfirm) {
-      return next(new AppError("Please provide a new password and confirmation.", 400));
-    }
-
-    if (password !== passwordConfirm) {
-      return next(new AppError("Passwords do not match.", 400));
-    }
-
-    // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
-    const passwordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&\#^()_\-+=])[A-Za-z\d@$!%*?&\#^()_\-+=]{8,}$/;
-    if (!passwordRegex.test(password)) {
-      return next(
-        new Error(
-          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
-        )
-      );
-    }
-
-    // Hash the token from the URL and find the user
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(req.params.token)
-      .digest("hex");
-
-    const user = await User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return next(new AppError("Reset token is invalid or has expired.", 400));
-    }
-
-    // Set new password
-    user.passwordHash = await bcryptjs.hash(password, 12);
-    user.passwordChangedAt = Date.now() - 1000; // minus 1s so JWT issued after this is valid
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-
-    // Log the user in
-    createSendToken(user, 200, res);
-  } catch (error) {
-    next(error);
+  if (!password || !passwordConfirm) {
+    throw new AppError("Please provide a new password and confirmation.", 400);
   }
-};
+
+  if (password !== passwordConfirm) {
+    throw new AppError("Passwords do not match.", 400);
+  }
+
+  // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&\#^()_\-+=])[A-Za-z\d@$!%*?&\#^()_\-+=]{8,}$/;
+  if (!passwordRegex.test(password)) {
+    throw new AppError(
+      "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.",
+      400,
+    );
+  }
+
+  // Hash the token from the URL and find the user
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(req.params.token)
+    .digest("hex");
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    throw new AppError("Reset token is invalid or has expired.", 400);
+  }
+
+  // Set new password
+  user.passwordHash = await bcryptjs.hash(password, 12);
+  user.passwordChangedAt = Date.now() - 1000;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  // Log the user in
+  createSendToken(user, 200, res);
+});
