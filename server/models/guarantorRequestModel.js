@@ -60,15 +60,17 @@ guarantorRequestSchema.post("save", async function (doc, next) {
     await doc.populate("guarantor receiver");
     const { guarantor, receiver, loanRequest } = doc;
 
+    let notifications = [];
+
     // Case 1: A new request is created.
     if (wasNew) {
-      const message = `${receiver.name} has requested you to be a guarantor for a loan.`;
-      // Link to the specific page where the guarantor can accept/decline
-      await createNotification(
-        guarantor,
-        message,
-        `/guarantor-requests/${doc._id}`
-      );
+      notifications = [
+        createNotification(
+          guarantor,
+          `${receiver.name} has requested you to be a guarantor for a loan.`,
+          `/guarantor-requests/${doc._id}`
+        ),
+      ];
     }
     // Case 2: An existing request's status is updated.
     else if (statusWasModified) {
@@ -81,9 +83,17 @@ guarantorRequestSchema.post("save", async function (doc, next) {
         message = `Update: ${guarantor.name} has declined your guarantor request. Please find another guarantor.`;
       }
       if (message) {
-        // Send the notification to the receiver who made the request
-        await createNotification(receiver, message, link);
+        notifications = [createNotification(receiver, message, link)];
       }
+    }
+
+    if (notifications.length > 0) {
+      const results = await Promise.allSettled(notifications);
+      results.forEach((r, i) => {
+        if (r.status === "rejected") {
+          console.error(`GuarantorRequest notification ${i} failed:`, r.reason);
+        }
+      });
     }
   } catch (error) {
     console.error("Error in guarantor request post-save hook:", error);

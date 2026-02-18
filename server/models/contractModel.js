@@ -99,76 +99,105 @@ contractSchema.post("save", async function (doc, next) {
     const { lender, receiver, guarantor } = doc;
     let link = `/contracts/${doc._id}`;
 
+    let notifications = [];
+
     // Case 1: A new contract is created.
     if (wasNew) {
       const message = `The loan contract for ${receiver.name} is ready for your signature.`;
-      await createNotification(lender, message, link);
-      await createNotification(receiver, message, link);
-      await createNotification(
-        guarantor,
-        `The contract for ${receiver.name}, which you guaranteed, is ready for your signature.`,
-        link
-      );
+      notifications = [
+        createNotification(lender, message, link),
+        createNotification(receiver, message, link),
+        createNotification(
+          guarantor,
+          `The contract for ${receiver.name}, which you guaranteed, is ready for your signature.`,
+          link
+        ),
+      ];
     }
     // Case 2: An existing contract's status is updated.
     else if (statusWasModified) {
       if (doc.status === "AWAITING_DISBURSAL") {
-        const message = `Contract with ${receiver.name} is fully signed. Please disburse the funds and confirm.`;
-        await createNotification(lender, message, link);
+        notifications = [
+          createNotification(
+            lender,
+            `Contract with ${receiver.name} is fully signed. Please disburse the funds and confirm.`,
+            link
+          ),
+        ];
       } else if (doc.status === "AWAITING_RECEIPT_CONFIRMATION") {
         link = `/contracts/${doc._id}/disbursal-proof`;
-        const message = `Lender ${lender.name} has confirmed payment. Please confirm receipt within 24 hours.`;
-        await createNotification(receiver, message, link);
+        notifications = [
+          createNotification(
+            receiver,
+            `Lender ${lender.name} has confirmed payment. Please confirm receipt within 24 hours.`,
+            link
+          ),
+        ];
       } else if (doc.status === "ACTIVE") {
-        await createNotification(
-          receiver,
-          `Your loan with ${lender.name} is now active!`,
-          link
-        );
-        await createNotification(
-          lender,
-          `The loan to ${receiver.name} is now active.`,
-          link
-        );
-        await createNotification(
-          guarantor,
-          `The loan for ${receiver.name} that you guaranteed is now active.`,
-          link
-        );
+        notifications = [
+          createNotification(
+            receiver,
+            `Your loan with ${lender.name} is now active!`,
+            link
+          ),
+          createNotification(
+            lender,
+            `The loan to ${receiver.name} is now active.`,
+            link
+          ),
+          createNotification(
+            guarantor,
+            `The loan for ${receiver.name} that you guaranteed is now active.`,
+            link
+          ),
+        ];
       } else if (doc.status === "REPAID") {
-        await createNotification(
-          lender,
-          `Congratulations! The loan to ${receiver.name} has been fully repaid.`,
-          link
-        );
-        await createNotification(
-          receiver,
-          `You have successfully repaid your loan from ${lender.name}. Your TrustIndex has increased!`,
-          link
-        );
-        await createNotification(
-          guarantor,
-          `Good news! The loan for ${receiver.name} has been repaid. Your TrustIndex has increased.`,
-          link
-        );
+        notifications = [
+          createNotification(
+            lender,
+            `Congratulations! The loan to ${receiver.name} has been fully repaid.`,
+            link
+          ),
+          createNotification(
+            receiver,
+            `You have successfully repaid your loan from ${lender.name}. Your TrustIndex has increased!`,
+            link
+          ),
+          createNotification(
+            guarantor,
+            `Good news! The loan for ${receiver.name} has been repaid. Your TrustIndex has increased.`,
+            link
+          ),
+        ];
       } else if (doc.status === "DEFAULT") {
         const liabilityAmount = doc.guarantorLiabilityAmount || Math.round(doc.principal * 0.5);
-        await createNotification(
-          lender,
-          `Urgent: The loan to ${receiver.name} has defaulted.`,
-          link
-        );
-        await createNotification(
-          receiver,
-          `Your loan from ${lender.name} has defaulted. Your TrustIndex has been severely impacted.`,
-          `/debts`
-        );
-        await createNotification(
-          guarantor,
-          `URGENT: The loan for ${receiver.name} has defaulted. You are liable for ₹${liabilityAmount.toLocaleString("en-IN")}. Pay now to settle your liability.`,
-          `/debts`
-        );
+        notifications = [
+          createNotification(
+            lender,
+            `Urgent: The loan to ${receiver.name} has defaulted.`,
+            link
+          ),
+          createNotification(
+            receiver,
+            `Your loan from ${lender.name} has defaulted. Your TrustIndex has been severely impacted.`,
+            `/debts`
+          ),
+          createNotification(
+            guarantor,
+            `URGENT: The loan for ${receiver.name} has defaulted. You are liable for ₹${liabilityAmount.toLocaleString("en-IN")}. Pay now to settle your liability.`,
+            `/debts`
+          ),
+        ];
       }
+    }
+
+    if (notifications.length > 0) {
+      const results = await Promise.allSettled(notifications);
+      results.forEach((r, i) => {
+        if (r.status === "rejected") {
+          console.error(`Contract notification ${i} failed:`, r.reason);
+        }
+      });
     }
   } catch (error) {
     console.error("Error in contract post-save notification hook:", error);

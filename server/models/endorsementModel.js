@@ -57,37 +57,46 @@ endorsementSchema.post("save", async function (doc, next) {
     await doc.populate("endorser receiver");
     const { endorser, receiver } = doc;
 
+    let notifications = [];
+
     // Case 1: A new endorsement was created.
     if (wasNew) {
-      const receiverMsg = `You have received a new endorsement from ${endorser.name}! Your TrustIndex has increased.`;
-      await createNotification(
-        receiver,
-        receiverMsg,
-        `/profile/${endorser._id}`
-      );
-
-      const endorserMsg = `You have successfully endorsed ${receiver.name}.`;
-      await createNotification(
-        endorser,
-        endorserMsg,
-        `/profile/${receiver._id}`
-      );
+      notifications = [
+        createNotification(
+          receiver,
+          `You have received a new endorsement from ${endorser.name}! Your TrustIndex has increased.`,
+          `/profile/${endorser._id}`
+        ),
+        createNotification(
+          endorser,
+          `You have successfully endorsed ${receiver.name}.`,
+          `/profile/${receiver._id}`
+        ),
+      ];
     }
     // Case 2: An endorsement's status was changed to REMOVED.
     else if (statusWasModified && doc.status === "REMOVED") {
-      const receiverMsg = `${endorser.name} has removed their endorsement. Your TrustIndex has been impacted.`;
-      await createNotification(
-        receiver,
-        receiverMsg,
-        `/profile/${endorser._id}`
-      );
+      notifications = [
+        createNotification(
+          receiver,
+          `${endorser.name} has removed their endorsement. Your TrustIndex has been impacted.`,
+          `/profile/${endorser._id}`
+        ),
+        createNotification(
+          endorser,
+          `You have removed your endorsement for ${receiver.name}.`,
+          `/profile/${receiver._id}`
+        ),
+      ];
+    }
 
-      const endorserMsg = `You have removed your endorsement for ${receiver.name}.`;
-      await createNotification(
-        endorser,
-        endorserMsg,
-        `/profile/${receiver._id}`
-      );
+    if (notifications.length > 0) {
+      const results = await Promise.allSettled(notifications);
+      results.forEach((r, i) => {
+        if (r.status === "rejected") {
+          console.error(`Endorsement notification ${i} failed:`, r.reason);
+        }
+      });
     }
   } catch (error) {
     console.error("Error in endorsement post-save hook:", error);
