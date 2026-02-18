@@ -133,15 +133,18 @@ export const getMyPendingActions = asyncHandler(async (req, res) => {
 });
 
 // GET /dashboard/ti-history
-// Synchronous handler — no async needed
-export const getMyTiHistory = (req, res) => {
+export const getMyTiHistory = asyncHandler(async (req, res) => {
+  // Re-fetch from DB so the response always reflects the capped, stored
+  // tiHistory rather than whatever the auth-middleware cached in req.user.
+  const user = await User.findById(req.user._id).select("tiHistory").lean();
+
   res.status(200).json({
     status: "success",
     data: {
-      tiHistory: req.user.tiHistory,
+      tiHistory: user?.tiHistory ?? [],
     },
   });
-};
+});
 
 export const getMyEndorsers = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user.id).populate(

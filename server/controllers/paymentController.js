@@ -296,13 +296,46 @@ async function processConfirmedPayment(
           e => e.status === "PAID",
         );
         if (allPaid) {
-          settleSuccessfulRepayment(contractId);
+          scheduleSettlement(contractId);
         }
       }
     } else {
-      settleSuccessfulRepayment(contractId);
+      scheduleSettlement(contractId);
     }
   }
+}
+
+/**
+ * Schedules settleSuccessfulRepayment to run after the current call-stack
+ * (and therefore after the HTTP response) using setImmediate.
+ *
+ * Why not fire-and-forget without any tracking?
+ *   • A plain unawaited call swallows errors silently — the contract stays
+ *     ACTIVE forever with no log evidence.
+ * Why not `await` inside processConfirmedPayment?
+ *   • Settlement touches 10+ DB operations (TI updates, PDF gen, capital
+ *     release, platform fee) which would stall the payment response by
+ *     several seconds.
+ *
+ * setImmediate ensures:
+ *   1. The response is sent first (non-blocking for the caller).
+ *   2. Errors are caught and logged (not silently swallowed).
+ *   3. On failure the contract ID is logged so an admin / cron can retry.
+ */
+function scheduleSettlement(contractId) {
+  setImmediate(async () => {
+    try {
+      await settleSuccessfulRepayment(contractId);
+    } catch (err) {
+      // settleSuccessfulRepayment has its own internal try/catch, but a
+      // second guard here ensures any unexpected throw is never silent.
+      logger.error(
+        `[CRITICAL] Settlement failed for contract ${contractId}. ` +
+          `Manual intervention may be required. Error: ${err.message}`,
+        { contractId, stack: err.stack },
+      );
+    }
+  });
 }
 
 import crypto from "crypto";

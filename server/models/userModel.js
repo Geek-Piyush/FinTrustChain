@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     passwordHash: { type: String, required: true },
-    avatarUrl: { type: String },      // URL to user's avatar image
+    avatarUrl: { type: String }, // URL to user's avatar image
     passwordChangedAt: Date,
     role: { type: String, enum: ["USER", "ADMIN"], default: "USER" },
     currentRole: {
@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
       enum: ["LENDER", "RECEIVER"],
       default: "RECEIVER",
     },
-    trustIndex: { type: Number, default: 400, min: 0, max: 950 }, 
+    trustIndex: { type: Number, default: 400, min: 0, max: 950 },
     trustBreakdown: {
       base: Number,
       timeliness: Number,
@@ -42,17 +42,20 @@ const userSchema = new mongoose.Schema(
     ],
     tiHistory: [
       {
-        value: Number,
+        value: { type: Number, required: true },
+        change: { type: Number, required: true }, // delta applied (+/-)
+        reason: { type: String, default: "" }, // human-readable reason
         date: { type: Date, default: Date.now },
       },
     ],
-    bio: { type: String, maxlength: 500 },  // User bio with max length
+    bio: { type: String, maxlength: 500 }, // User bio with max length
     status: {
       type: String,
       enum: ["ACTIVE", "BLOCKED"],
       default: "ACTIVE",
     },
-    upiId: {                        // UPI ID for payments
+    upiId: {
+      // UPI ID for payments
       type: String,
       trim: true,
       unique: true,
@@ -62,7 +65,7 @@ const userSchema = new mongoose.Schema(
         validator: function (v) {
           return /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}/.test(v);
         },
-        message: (props) => `${props.value} is not a valid UPI ID!`,
+        message: props => `${props.value} is not a valid UPI ID!`,
       },
       select: false,
     },
@@ -71,18 +74,22 @@ const userSchema = new mongoose.Schema(
     defaults: { type: Number, default: 0 },
 
     // ── Lender Capital Tracking ──
-    lenderCapital: { type: Number, default: 0 },   // total declared investment budget
-    lockedCapital: { type: Number, default: 0 },   // locked in active contracts
+    lenderCapital: { type: Number, default: 0 }, // total declared investment budget
+    lockedCapital: { type: Number, default: 0 }, // locked in active contracts
 
     // ── Premium Subscription ──
     premium: {
       active: { type: Boolean, default: false },
       plan: { type: String, enum: ["LENDER", "RECEIVER", null], default: null },
-      duration: { type: String, enum: ["BIMONTHLY", "ANNUAL", null], default: null },
+      duration: {
+        type: String,
+        enum: ["BIMONTHLY", "ANNUAL", null],
+        default: null,
+      },
       expiresAt: { type: Date },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Invalidate auth cache whenever a user document is saved
