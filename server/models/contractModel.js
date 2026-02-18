@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { createNotification } from "../services/notificationService.js";
+import { dispatchContractNotifications } from "../services/notificationService.js";
 import logger from "../utils/logger.js";
 
 const contractSchema = new mongoose.Schema(
@@ -69,7 +69,7 @@ const contractSchema = new mongoose.Schema(
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // --- Indexes for common query patterns ---
@@ -81,138 +81,41 @@ contractSchema.index({ guarantor: 1, status: 1, createdAt: -1 });
 contractSchema.index({ status: 1, endDate: 1 });
 contractSchema.index({ status: 1, updatedAt: 1 });
 
-// --- Mongoose Middleware for Notifications (Corrected) ---
+// --- Mongoose Middleware for Notifications ---
+//
+// DESIGN: Notification generation is intentionally NOT awaited inside these
+// hooks. Awaiting populate() + multiple Notification.create() calls would add
+// those DB writes to the latency of every contract.save() call, blocking the
+// HTTP response until all notifications are persisted.
+//
+// Instead:
+//   • The 'pre' hook records the transition type on the document instance.
+//   • The 'post' hook hands off to dispatchContractNotifications via
+//     setImmediate so the response is sent first and the writes happen in the
+//     next event-loop tick, fully decoupled from the request path.
 
-// Step 1: Use a 'pre' hook to reliably detect the state BEFORE the save.
 contractSchema.pre("save", function (next) {
   if (this.isNew) {
-    this._wasNew = true; // Set a temporary flag for new documents.
-  }
-  if (!this.isNew && this.isModified("status")) {
-    this._statusWasModified = true; // Set a flag for status updates.
+    this._notifyEvent = "CREATED";
+  } else if (!this.isNew && this.isModified("status")) {
+    // Map the new status directly to a notification event name.
+    this._notifyEvent = this.status; // e.g. "ACTIVE", "REPAID", "DEFAULT" …
   }
   next();
 });
 
-// Step 2: Use a 'post' hook to act on the flags set in the 'pre' hook.
-contractSchema.post("save", async function (doc, next) {
-  try {
-    const wasNew = doc._wasNew;
-    const statusWasModified = doc._statusWasModified;
+contractSchema.post("save", function (doc) {
+  if (!doc._notifyEvent) return;
 
-    // Exit early if no relevant changes were made.
-    if (!wasNew && !statusWasModified) {
-      return next();
-    }
-
-    await doc.populate("lender receiver guarantor");
-    const { lender, receiver, guarantor } = doc;
-    let link = `/contracts/${doc._id}`;
-
-    let notifications = [];
-
-    // Case 1: A new contract is created.
-    if (wasNew) {
-      const message = `The loan contract for ${receiver.name} is ready for your signature.`;
-      notifications = [
-        createNotification(lender, message, link),
-        createNotification(receiver, message, link),
-        createNotification(
-          guarantor,
-          `The contract for ${receiver.name}, which you guaranteed, is ready for your signature.`,
-          link
-        ),
-      ];
-    }
-    // Case 2: An existing contract's status is updated.
-    else if (statusWasModified) {
-      if (doc.status === "AWAITING_DISBURSAL") {
-        notifications = [
-          createNotification(
-            lender,
-            `Contract with ${receiver.name} is fully signed. Please disburse the funds and confirm.`,
-            link
-          ),
-        ];
-      } else if (doc.status === "AWAITING_RECEIPT_CONFIRMATION") {
-        link = `/contracts/${doc._id}/disbursal-proof`;
-        notifications = [
-          createNotification(
-            receiver,
-            `Lender ${lender.name} has confirmed payment. Please confirm receipt within 24 hours.`,
-            link
-          ),
-        ];
-      } else if (doc.status === "ACTIVE") {
-        notifications = [
-          createNotification(
-            receiver,
-            `Your loan with ${lender.name} is now active!`,
-            link
-          ),
-          createNotification(
-            lender,
-            `The loan to ${receiver.name} is now active.`,
-            link
-          ),
-          createNotification(
-            guarantor,
-            `The loan for ${receiver.name} that you guaranteed is now active.`,
-            link
-          ),
-        ];
-      } else if (doc.status === "REPAID") {
-        notifications = [
-          createNotification(
-            lender,
-            `Congratulations! The loan to ${receiver.name} has been fully repaid.`,
-            link
-          ),
-          createNotification(
-            receiver,
-            `You have successfully repaid your loan from ${lender.name}. Your TrustIndex has increased!`,
-            link
-          ),
-          createNotification(
-            guarantor,
-            `Good news! The loan for ${receiver.name} has been repaid. Your TrustIndex has increased.`,
-            link
-          ),
-        ];
-      } else if (doc.status === "DEFAULT") {
-        const liabilityAmount = doc.guarantorLiabilityAmount || Math.round(doc.principal * 0.5);
-        notifications = [
-          createNotification(
-            lender,
-            `Urgent: The loan to ${receiver.name} has defaulted.`,
-            link
-          ),
-          createNotification(
-            receiver,
-            `Your loan from ${lender.name} has defaulted. Your TrustIndex has been severely impacted.`,
-            `/debts`
-          ),
-          createNotification(
-            guarantor,
-            `URGENT: The loan for ${receiver.name} has defaulted. You are liable for ₹${liabilityAmount.toLocaleString("en-IN")}. Pay now to settle your liability.`,
-            `/debts`
-          ),
-        ];
-      }
-    }
-
-    if (notifications.length > 0) {
-      const results = await Promise.allSettled(notifications);
-      results.forEach((r, i) => {
-        if (r.status === "rejected") {
-          logger.error(`Contract notification ${i} failed:`, r.reason);
-        }
-      });
-    }
-  } catch (error) {
-    logger.error("Error in contract post-save notification hook:", error);
-  }
-  next();
+  const event = doc._notifyEvent;
+  setImmediate(() => {
+    dispatchContractNotifications(doc, event).catch(err =>
+      logger.error(
+        `Async notification dispatch failed for contract ${doc._id} event "${event}":`,
+        err,
+      ),
+    );
+  });
 });
 
 const Contract = mongoose.model("Contract", contractSchema);

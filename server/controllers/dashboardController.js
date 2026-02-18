@@ -54,7 +54,8 @@ export const getMyActiveContracts = asyncHandler(async (req, res) => {
       .populate("lender receiver guarantor", "name avatarUrl")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Contract.countDocuments(query),
   ]);
 
@@ -87,7 +88,7 @@ export const getMyPendingActions = asyncHandler(async (req, res) => {
   };
 
   const [contractsToSign, totalContracts] = await Promise.all([
-    Contract.find(sigQuery).skip(skip).limit(limit),
+    Contract.find(sigQuery).skip(skip).limit(limit).lean(),
     Contract.countDocuments(sigQuery),
   ]);
 
@@ -97,12 +98,15 @@ export const getMyPendingActions = asyncHandler(async (req, res) => {
     GuarantorRequest.find(grQuery)
       .populate("receiver", "name avatarUrl")
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     GuarantorRequest.countDocuments(grQuery),
   ]);
 
   // Find loan requests for this lender's brochures
-  const myBrochures = await LoanBrochure.find({ lender: userId }).select("_id");
+  const myBrochures = await LoanBrochure.find({ lender: userId })
+    .select("_id")
+    .lean();
   const myBrochureIds = myBrochures.map(b => b.id);
   const lrQuery = {
     brochureIds: { $in: myBrochureIds },
@@ -112,7 +116,8 @@ export const getMyPendingActions = asyncHandler(async (req, res) => {
     LoanRequest.find(lrQuery)
       .populate("receiver", "name avatarUrl")
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     LoanRequest.countDocuments(lrQuery),
   ]);
 
@@ -208,7 +213,8 @@ export const getEligibleBrochures = asyncHandler(async (req, res) => {
       .populate("lender", "name email trustIndex")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     LoanBrochure.countDocuments(query),
   ]);
 
