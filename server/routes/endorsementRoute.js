@@ -4,6 +4,7 @@ import {
   removeEndorsement,
 } from "../controllers/endorsementController.js";
 import { protect } from "../middlewares/authMiddleware.js";
+import { validateCreateEndorsement } from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const router = express.Router();
 router.use(protect);
 
 // POST /api/v1/endorsements
-router.post("/", createEndorsement);
+router.post("/", validateCreateEndorsement, createEndorsement);
 
 // DELETE /api/v1/endorsements/:id
 // The :id parameter is the ID of the user you want to un-endorse.

@@ -5,11 +5,12 @@ import {
   checkPaymentStatus,
 } from "../controllers/paymentController.js";
 import { protect } from "../middlewares/authMiddleware.js";
+import { validateCreatePayment } from "../middlewares/validators.js";
 
 const router = express.Router();
 
 // This route is for the user to initiate a payment. It must be protected.
-router.post("/pay", protect, createPayment);
+router.post("/pay", protect, validateCreatePayment, createPayment);
 
 // Frontend polls this after PhonePe redirect — verifies payment server-to-server
 router.get("/status/:merchantOrderId", protect, checkPaymentStatus);

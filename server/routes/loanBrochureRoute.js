@@ -7,6 +7,10 @@ import {
   deleteBrochure,
 } from "../controllers/loanBrochureController.js";
 import { protect } from "../middlewares/authMiddleware.js";
+import {
+  validateCreateBrochure,
+  validateUpdateBrochure,
+} from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -31,11 +35,11 @@ router.get("/", optionalProtect, getAllBrochures);
 router.use(protect);
 
 // POST /api/v1/brochures
-router.post("/", createBrochure);
+router.post("/", validateCreateBrochure, createBrochure);
 
 // PATCH /api/v1/brochures/:id
 // Updates the details (amount, rate, etc.) of a brochure.
-router.patch("/:id", updateBrochureDetails);
+router.patch("/:id", validateUpdateBrochure, updateBrochureDetails);
 
 // PATCH /api/v1/brochures/:id/toggle-status
 // Toggles a brochure between active and inactive.

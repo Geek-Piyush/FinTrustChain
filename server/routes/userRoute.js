@@ -1,6 +1,7 @@
 import express from "express";
 import * as userController from "../controllers/userController.js";
 import { protect } from "../middlewares/authMiddleware.js";
+import { validateUpdateMe, validateSubscribe } from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -17,11 +18,12 @@ router.patch(
   "/update-me",
   userController.uploadUserAvatar,
   userController.resizeUserAvatar,
+  validateUpdateMe,
   userController.updateMe
 );
 
 router.post("/toggle-my-role", userController.toggleCurrentUserRole);
 router.get("/can-toggle-role", userController.canToggleRole);
-router.post("/subscribe", userController.subscribe);
+router.post("/subscribe", validateSubscribe, userController.subscribe);
 
 export default router;

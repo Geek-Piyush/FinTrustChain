@@ -1,6 +1,7 @@
 import express from "express";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 import * as adminController from "../controllers/adminController.js";
+import { validateUpdateContractStatus } from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -20,6 +21,10 @@ router.patch("/users/:id/block", adminController.blockUser);
 // Contract management
 router.get("/contracts", adminController.getContracts);
 router.get("/contracts/:contractId", adminController.getContractById);
-router.patch("/contracts/:id/status", adminController.updateContractStatus);
+router.patch(
+  "/contracts/:id/status",
+  validateUpdateContractStatus,
+  adminController.updateContractStatus
+);
 
 export default router;

@@ -5,6 +5,7 @@ import {
   cancelLoanRequest,
 } from "../controllers/loanRequestController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { validateCreateLoanRequest } from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -18,6 +19,6 @@ router.get("/my", restrictTo("RECEIVER"), getMy);
 router.patch("/:id/cancel", restrictTo("RECEIVER"), cancelLoanRequest);
 
 // POST /api/v1/loan-requests - Create loan request (RECEIVER only)
-router.post("/", restrictTo("RECEIVER"), createLoanRequest);
+router.post("/", restrictTo("RECEIVER"), validateCreateLoanRequest, createLoanRequest);
 
 export default router;

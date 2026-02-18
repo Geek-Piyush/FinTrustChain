@@ -6,6 +6,10 @@ import {
   getGuarantorRequestById,
 } from "../controllers/guarantorRequestController.js";
 import { protect } from "../middlewares/authMiddleware.js";
+import {
+  validateCreateGuarantorRequest,
+  validateRespondGuarantorRequest,
+} from "../middlewares/validators.js";
 
 const router = express.Router();
 
@@ -18,10 +22,10 @@ router.get("/pending", getPendingGuarantorRequests);
 router.get("/:id", getGuarantorRequestById);
 
 // Send a new guarantor request
-router.post("/", createGuarantorRequest);
+router.post("/", validateCreateGuarantorRequest, createGuarantorRequest);
 
 // Respond to a guarantor request
 // The :id is the ID of the GuarantorRequest document
-router.patch("/:id", respondToGuarantorRequest);
+router.patch("/:id", validateRespondGuarantorRequest, respondToGuarantorRequest);
 
 export default router;
