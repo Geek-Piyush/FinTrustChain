@@ -4,6 +4,7 @@ const { StandardCheckoutClient, Env, StandardCheckoutPayRequest } = phonepe;
 import { randomUUID } from "crypto";
 import Contract from "../models/contractModel.js";
 import AppError from "../utils/AppError.js";
+import logger from "../utils/logger.js";
 
 // --- Initialize the PhonePe Client (Singleton Pattern) ---
 const clientId = process.env.PHONEPE_CLIENT_ID;
@@ -92,7 +93,7 @@ export async function initiatePayment(
     const response = await phonepeClient.pay(request);
     return response.redirectUrl;
   } catch (error) {
-    console.error("PhonePe Payment Initiation Error:", {
+    logger.error("PhonePe Payment Initiation Error", {
       message: error.message,
       httpStatusCode: error.httpStatusCode,
       data: error.data,

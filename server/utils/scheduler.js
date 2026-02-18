@@ -7,16 +7,16 @@ import * as trustIndexService from "../services/trustIndexService.js";
 import * as userService from "../services/userService.js";
 import { createNotification } from "../services/notificationService.js";
 import { sendOverdueEMIEmail } from "../utils/email.js";
+import logger from "./logger.js";
+
 
 const checkOverdueConfirmations = async () => {
   const lockAcquired = await CronLock.acquire("checkOverdueConfirmations", 5 * 60 * 1000);
   if (!lockAcquired) {
-    console.log("checkOverdueConfirmations: skipped (another instance holds the lock)");
+    logger.debug("checkOverdueConfirmations: skipped (another instance holds the lock)");
     return;
   }
-  console.log(
-    "Running scheduled job: Checking for overdue receipt confirmations..."
-  );
+  logger.info("Running scheduled job: Checking for overdue receipt confirmations...");
   try {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const overdueContracts = await Contract.find({
@@ -24,26 +24,22 @@ const checkOverdueConfirmations = async () => {
       updatedAt: { $lte: twentyFourHoursAgo },
     }).populate("receiver");
     if (overdueContracts.length === 0) {
-      console.log("No overdue contracts found. Job finished.");
+      logger.info("No overdue contracts found. Job finished.");
       return;
     }
-    console.log(
-      `Found ${overdueContracts.length} overdue contract(s) to process.`
-    );
+    logger.info(`Found ${overdueContracts.length} overdue contract(s) to process.`);
     await Promise.all(
       overdueContracts.map(async (contract) => {
         const receiver = contract.receiver;
         if (receiver && receiver.status !== "BLOCKED") {
           receiver.status = "BLOCKED";
           await receiver.save();
-          console.log(
-            `User ${receiver.name} (ID: ${receiver._id}) has been BLOCKED for not confirming receipt on time for Contract ID: ${contract._id}.`
-          );
+          logger.warn(`User ${receiver.name} (ID: ${receiver._id}) has been BLOCKED for not confirming receipt on time for Contract ID: ${contract._id}.`);
         }
       })
     );
   } catch (error) {
-    console.error("Error during scheduled job execution:", error);
+    logger.error("Error during scheduled job execution:", error);
   } finally {
     await CronLock.release("checkOverdueConfirmations");
   }
@@ -52,10 +48,10 @@ const checkOverdueConfirmations = async () => {
 export const checkLoanDefaults = async () => {
   const lockAcquired = await CronLock.acquire("checkLoanDefaults", 10 * 60 * 1000);
   if (!lockAcquired) {
-    console.log("checkLoanDefaults: skipped (another instance holds the lock)");
+    logger.debug("checkLoanDefaults: skipped (another instance holds the lock)");
     return;
   }
-  console.log("Running scheduled job: Checking for loan defaults...");
+  logger.info("Running scheduled job: Checking for loan defaults...");
   try {
     const now = new Date();
 
@@ -66,20 +62,18 @@ export const checkLoanDefaults = async () => {
     });
 
     if (overdueContracts.length === 0) {
-      console.log("No defaulted loans found. Job finished.");
+      logger.info("No defaulted loans found. Job finished.");
       return;
     }
 
-    console.log(
-      `Found ${overdueContracts.length} defaulted loan(s) to process.`
-    );
+    logger.info(`Found ${overdueContracts.length} defaulted loan(s) to process.`);
 
     // Process each defaulted loan using our settlement service
     await Promise.all(
       overdueContracts.map((contract) => settleDefaultedLoan(contract))
     );
   } catch (error) {
-    console.error("Error during loan default check:", error);
+    logger.error("Error during loan default check:", error);
   } finally {
     await CronLock.release("checkLoanDefaults");
   }
@@ -101,10 +95,10 @@ export const checkLoanDefaults = async () => {
 export const checkOverdueEMIs = async () => {
   const lockAcquired = await CronLock.acquire("checkOverdueEMIs", 15 * 60 * 1000);
   if (!lockAcquired) {
-    console.log("checkOverdueEMIs: skipped (another instance holds the lock)");
+    logger.debug("checkOverdueEMIs: skipped (another instance holds the lock)");
     return;
   }
-  console.log("Running scheduled job: Checking for overdue EMIs...");
+  logger.info("Running scheduled job: Checking for overdue EMIs...");
   try {
     const now = new Date();
 
@@ -116,7 +110,7 @@ export const checkOverdueEMIs = async () => {
     });
 
     if (contracts.length === 0) {
-      console.log("No overdue EMIs found. Job finished.");
+      logger.info("No overdue EMIs found. Job finished.");
       return;
     }
 
@@ -195,11 +189,7 @@ export const checkOverdueEMIs = async () => {
             percentLabel
           );
 
-          console.log(
-            `EMI #${emi.emiNumber} on Contract ${contract._id} → OVERDUE. ` +
-              `Penalty: -${deduction} TI (${percentLabel}%, consecutive #${contract.consecutiveOverdueCount}). ` +
-              `Receiver: ${receiver.name}, TI: ${receiver.trustIndex}`
-          );
+          logger.info(`EMI #${emi.emiNumber} on Contract ${contract._id} → OVERDUE. Penalty: -${deduction} TI (${percentLabel}%, consecutive #${contract.consecutiveOverdueCount}). Receiver: ${receiver.name}, TI: ${receiver.trustIndex}`);
         }
 
         await contract.save();
@@ -209,11 +199,9 @@ export const checkOverdueEMIs = async () => {
 
     const totalMarked = results.reduce((sum, n) => sum + n, 0);
 
-    console.log(
-      `Overdue EMI check complete. ${totalMarked} EMI(s) newly marked OVERDUE.`
-    );
+    logger.info(`Overdue EMI check complete. ${totalMarked} EMI(s) newly marked OVERDUE.`);
   } catch (error) {
-    console.error("Error during overdue EMI check:", error);
+    logger.error("Error during overdue EMI check:", error);
   } finally {
     await CronLock.release("checkOverdueEMIs");
   }
@@ -230,7 +218,5 @@ export const startScheduler = () => {
   // Idempotent: penaltyApplied flag ensures each EMI is penalized only once
   cron.schedule("0 6 * * *", checkOverdueEMIs);
 
-  console.log(
-    "Scheduler started. Jobs for overdue confirmations, loan defaults, and overdue EMIs are running."
-  );
+  logger.info("Scheduler started. Jobs: overdue confirmations, loan defaults, overdue EMIs.");
 };

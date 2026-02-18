@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 
 /**
  * Distributed cron lock using MongoDB atomic operations.
@@ -47,7 +48,7 @@ cronLockSchema.statics.acquire = async function (jobName, ttlMs = 5 * 60 * 1000)
   } catch (err) {
     // E11000 duplicate key = another instance beat us to it
     if (err.code === 11000) return false;
-    console.error(`CronLock.acquire(${jobName}) error:`, err);
+    logger.error(`CronLock.acquire(${jobName}) error:`, err);
     return false;
   }
 };
@@ -60,7 +61,7 @@ cronLockSchema.statics.release = async function (jobName) {
   try {
     await this.deleteOne({ _id: jobName });
   } catch (err) {
-    console.error(`CronLock.release(${jobName}) error:`, err);
+    logger.error(`CronLock.release(${jobName}) error:`, err);
   }
 };
 

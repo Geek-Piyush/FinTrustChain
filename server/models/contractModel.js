@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { createNotification } from "../services/notificationService.js";
+import logger from "../utils/logger.js";
 
 const contractSchema = new mongoose.Schema(
   {
@@ -204,12 +205,12 @@ contractSchema.post("save", async function (doc, next) {
       const results = await Promise.allSettled(notifications);
       results.forEach((r, i) => {
         if (r.status === "rejected") {
-          console.error(`Contract notification ${i} failed:`, r.reason);
+          logger.error(`Contract notification ${i} failed:`, r.reason);
         }
       });
     }
   } catch (error) {
-    console.error("Error in contract post-save notification hook:", error);
+    logger.error("Error in contract post-save notification hook:", error);
   }
   next();
 });

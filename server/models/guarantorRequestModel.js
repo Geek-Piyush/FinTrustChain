@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { createNotification } from "../services/notificationService.js";
+import logger from "../utils/logger.js";
 
 const guarantorRequestSchema = new mongoose.Schema(
   {
@@ -91,12 +92,12 @@ guarantorRequestSchema.post("save", async function (doc, next) {
       const results = await Promise.allSettled(notifications);
       results.forEach((r, i) => {
         if (r.status === "rejected") {
-          console.error(`GuarantorRequest notification ${i} failed:`, r.reason);
+          logger.error(`GuarantorRequest notification ${i} failed:`, r.reason);
         }
       });
     }
   } catch (error) {
-    console.error("Error in guarantor request post-save hook:", error);
+    logger.error("Error in guarantor request post-save hook:", error);
   }
   next();
 });

@@ -1,4 +1,5 @@
 import Notification from "../models/notificationModel.js";
+import logger from "../utils/logger.js";
 
 /**
  * Creates and saves a new notification for a specific user.
@@ -13,13 +14,12 @@ export async function createNotification(user, message, link) {
   try {
     // Ensure we handle both full user objects and plain IDs.
     const userId = user._id || user;
-    console.log("Creating notification for user:", userId, "Message:", message);
     await Notification.create({
       user: userId,
       message,
       link,
     });
   } catch (error) {
-    console.error(`Failed to create notification for user ${user._id}:`, error);
+    logger.error(`Failed to create notification for user ${user._id}:`, error);
   }
 }

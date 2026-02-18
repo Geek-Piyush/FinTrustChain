@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { createNotification } from "../services/notificationService.js";
+import logger from "../utils/logger.js";
 
 const endorsementSchema = new mongoose.Schema(
   {
@@ -50,7 +51,6 @@ endorsementSchema.post("save", async function (doc, next) {
 
     // Exit early if no relevant changes were made.
     if (!wasNew && !statusWasModified) {
-      console.log("No relevant changes detected for notification.");
       return next();
     }
 
@@ -94,12 +94,12 @@ endorsementSchema.post("save", async function (doc, next) {
       const results = await Promise.allSettled(notifications);
       results.forEach((r, i) => {
         if (r.status === "rejected") {
-          console.error(`Endorsement notification ${i} failed:`, r.reason);
+          logger.error(`Endorsement notification ${i} failed:`, r.reason);
         }
       });
     }
   } catch (error) {
-    console.error("Error in endorsement post-save hook:", error);
+    logger.error("Error in endorsement post-save hook:", error);
   }
   next();
 });

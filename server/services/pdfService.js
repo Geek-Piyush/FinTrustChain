@@ -3,6 +3,7 @@ import fontkit from "@pdf-lib/fontkit";
 import fs from "fs/promises";
 import path from "path";
 import AppError from "../utils/AppError.js";
+import logger from "../utils/logger.js";
 
 export async function createContractPDF(data, filename) {
   const templatePath = path.resolve("./public/templates/FinTrustChain.pdf");
@@ -320,6 +321,6 @@ export async function createClosurePDF(data, filename) {
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, pdfBytes);
 
-  console.log(`Closure Agreement PDF saved as: ${filename}`);
+  logger.info(`Closure Agreement PDF saved as: ${filename}`);
   return filename;
 }

@@ -15,6 +15,7 @@ import {
 } from "../controllers/contractController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 import { checkLoanDefaults, checkOverdueEMIs } from "../utils/scheduler.js";
+import logger from "../utils/logger.js";
 const router = express.Router();
 
 // All contract routes require a user to be logged in.
@@ -45,13 +46,13 @@ router.post("/:id/guarantor-pay", initiateGuarantorPayment);
 
 // Admin Access testing
 router.post("/admin/trigger-default-check", async (req, res) => {
-  console.log("--- ADMIN: Manually triggering default check ---");
+  logger.info("ADMIN: Manually triggering default check");
   await checkLoanDefaults();
   res.status(200).send("Default check triggered successfully.");
 });
 
 router.post("/admin/trigger-overdue-emi-check", async (req, res) => {
-  console.log("--- ADMIN: Manually triggering overdue EMI check ---");
+  logger.info("ADMIN: Manually triggering overdue EMI check");
   await checkOverdueEMIs();
   res.status(200).send("Overdue EMI check triggered successfully.");
 });

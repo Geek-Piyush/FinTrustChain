@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import logger from "./logger.js";
 
 // ── Resend Setup ──
 // Uses HTTP API — works on Render, Vercel, and every platform
@@ -10,12 +11,12 @@ function getResend() {
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("⚠️  RESEND_API_KEY not set — emails disabled");
+    logger.warn("RESEND_API_KEY not set — emails disabled");
     return null;
   }
 
   resend = new Resend(apiKey);
-  console.log("✅ Email service ready (Resend HTTP API)");
+  logger.info("Email service ready (Resend HTTP API)");
   return resend;
 }
 
@@ -28,7 +29,7 @@ const FROM_ADDRESS =
 async function sendEmail(to, subject, textBody, htmlBody) {
   const client = getResend();
   if (!client) {
-    console.warn(`⚠️  Email skipped (no API key): "${subject}" → ${to}`);
+    logger.warn(`Email skipped (no API key): "${subject}" → ${to}`);
     return;
   }
 
@@ -42,14 +43,14 @@ async function sendEmail(to, subject, textBody, htmlBody) {
     });
 
     if (error) {
-      console.error(`❌ Email to ${to} failed:`, error.message);
+      logger.error(`Email to ${to} failed: ${error.message}`);
       return;
     }
 
-    console.log(`✅ Email sent to ${to} (${subject}) [${data.id}]`);
+    logger.info(`Email sent to ${to} (${subject}) [${data.id}]`);
   } catch (error) {
     // Email failures should NEVER crash the app
-    console.error(`❌ Email to ${to} failed: ${error.message}`);
+    logger.error(`Email to ${to} failed: ${error.message}`);
   }
 }
 
@@ -281,7 +282,7 @@ export async function sendSupportEmail(
 ) {
   const client = getResend();
   if (!client) {
-    console.warn(`⚠️  Support email skipped (no API key): "${subject}"`);
+    logger.warn(`Support email skipped (no API key): "${subject}"`);
     return;
   }
 
@@ -327,12 +328,12 @@ export async function sendSupportEmail(
     const { data, error } = await client.emails.send(payload);
 
     if (error) {
-      console.error(`❌ Support email failed:`, error.message);
+      logger.error(`Support email failed: ${error.message}`);
       return;
     }
 
-    console.log(`✅ Support email sent [${data.id}] — ${subject}`);
+    logger.info(`Support email sent [${data.id}] — ${subject}`);
   } catch (error) {
-    console.error(`❌ Support email failed: ${error.message}`);
+    logger.error(`Support email failed: ${error.message}`);
   }
 }

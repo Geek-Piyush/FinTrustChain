@@ -7,6 +7,7 @@ import * as trustIndexService from "./trustIndexService.js";
 import * as userService from "./userService.js";
 import { createClosurePDF, applySignatureToPDF } from "./pdfService.js";
 import { sendLoanDefaultEmail } from "../utils/email.js";
+import logger from "../utils/logger.js";
 
 // Helper: release locked capital and reactivate brochures
 async function releaseCapital(lenderId, amount) {
@@ -27,7 +28,7 @@ async function releaseCapital(lenderId, amount) {
 
 export async function settleSuccessfulRepayment(contractId) {
   try {
-    console.log(`Starting settlement process for Contract ID: ${contractId}`);
+    logger.info(`Starting settlement process for Contract ID: ${contractId}`);
 
     // 1. Fetch the contract and all associated parties
     const contract = await Contract.findById(contractId)
@@ -35,9 +36,7 @@ export async function settleSuccessfulRepayment(contractId) {
       .populate("guarantor");
 
     if (!contract || contract.status === "REPAID") {
-      console.log(
-        `Contract ${contractId} not found or already repaid. Skipping settlement.`
-      );
+      logger.warn(`Contract ${contractId} not found or already repaid. Skipping settlement.`);
       return;
     }
 
@@ -73,9 +72,7 @@ export async function settleSuccessfulRepayment(contractId) {
     );
     receiver.successfulRepayments += 1;
     await receiver.save();
-    console.log(
-      `Updated Receiver ${receiver.name}. TI Gain: ${receiverTIGain}`
-    );
+    logger.info(`Updated Receiver ${receiver.name}. TI Gain: ${receiverTIGain}`);
 
     // Update Guarantor
     if (guarantor) {
@@ -86,9 +83,7 @@ export async function settleSuccessfulRepayment(contractId) {
         guarantorTIGain,
         `Guaranteed Loan Repaid: ${contractId}`
       );
-      console.log(
-        `Updated Guarantor ${guarantor.name}. TI Gain: ${guarantorTIGain}`
-      );
+      logger.info(`Updated Guarantor ${guarantor.name}. TI Gain: ${guarantorTIGain}`);
     }
 
     // Update Endorsers
@@ -106,9 +101,7 @@ export async function settleSuccessfulRepayment(contractId) {
               `Endorsed Loan Repaid: ${contractId}`
             )
             .then(() =>
-              console.log(
-                `Updated Endorser ${endorser.name}. TI Gain: ${endorserTIGain}`
-              )
+              logger.info(`Updated Endorser ${endorser.name}. TI Gain: ${endorserTIGain}`)
             )
         )
       );
@@ -160,15 +153,10 @@ export async function settleSuccessfulRepayment(contractId) {
         await applySignatureToPDF(contract.pdfFilename, lender, "lender");
       }
 
-      console.log(
-        `Closure Agreement PDF generated with signatures: ${contract.pdfFilename}`
-      );
+      logger.info(`Closure Agreement PDF generated with signatures: ${contract.pdfFilename}`);
     } catch (pdfError) {
       // PDF generation failure should not break the settlement flow
-      console.error(
-        `Failed to generate Closure Agreement PDF for contract ${contractId}:`,
-        pdfError
-      );
+      logger.error(`Failed to generate Closure Agreement PDF for contract ${contractId}:`, pdfError);
     }
 
     await LoanRequest.findByIdAndUpdate(contract.loanRequest, {
@@ -195,14 +183,9 @@ export async function settleSuccessfulRepayment(contractId) {
       });
     }
 
-    console.log(
-      `Settlement process for Contract ID: ${contractId} completed successfully.`
-    );
+    logger.info(`Settlement process for Contract ID: ${contractId} completed successfully.`);
   } catch (error) {
-    console.error(
-      `Error during settlement for Contract ID ${contractId}:`,
-      error
-    );
+    logger.error(`Error during settlement for Contract ID ${contractId}:`, error);
   }
 }
 
@@ -212,7 +195,7 @@ export async function settleSuccessfulRepayment(contractId) {
  */
 export async function settleDefaultedLoan(contract) {
   try {
-    console.log(`Starting default settlement for Contract ID: ${contract._id}`);
+    logger.info(`Starting default settlement for Contract ID: ${contract._id}`);
 
     // 1. Fetch all associated parties
     const receiver = await User.findById(contract.receiver);
@@ -244,9 +227,7 @@ export async function settleDefaultedLoan(contract) {
     );
     receiver.defaults += 1;
     await receiver.save();
-    console.log(
-      `Updated Receiver ${receiver.name}. TI Loss: ${receiverTILoss}`
-    );
+    logger.info(`Updated Receiver ${receiver.name}. TI Loss: ${receiverTILoss}`);
 
     // Update Guarantor
     if (guarantor) {
@@ -257,9 +238,7 @@ export async function settleDefaultedLoan(contract) {
         -guarantorTILoss,
         `Guaranteed Loan Defaulted: ${contract._id}`
       );
-      console.log(
-        `Updated Guarantor ${guarantor.name}. TI Loss: ${guarantorTILoss}`
-      );
+      logger.info(`Updated Guarantor ${guarantor.name}. TI Loss: ${guarantorTILoss}`);
     }
 
     // Update Endorsers
@@ -277,9 +256,7 @@ export async function settleDefaultedLoan(contract) {
               `Endorsed Loan Defaulted: ${contract._id}`
             )
             .then(() =>
-              console.log(
-                `Updated Endorser ${endorser.name}. TI Loss: ${endorserTILoss}`
-              )
+              logger.info(`Updated Endorser ${endorser.name}. TI Loss: ${endorserTILoss}`)
             )
         )
       );
@@ -297,9 +274,7 @@ export async function settleDefaultedLoan(contract) {
     contract.guarantorLiabilityPaid = false;
     await contract.save();
 
-    console.log(
-      `Default settlement for Contract ID: ${contract._id} completed successfully.`
-    );
+    logger.info(`Default settlement for Contract ID: ${contract._id} completed successfully.`);
 
     // --- Release locked capital ---
     await releaseCapital(contract.lender, contract.principal);
@@ -315,9 +290,6 @@ export async function settleDefaultedLoan(contract) {
       );
     }
   } catch (error) {
-    console.error(
-      `Error during default settlement for Contract ID ${contract._id}:`,
-      error
-    );
+    logger.error(`Error during default settlement for Contract ID ${contract._id}:`, error);
   }
 }
