@@ -97,16 +97,21 @@ export async function settleSuccessfulRepayment(contractId) {
         receiverTIGain,
         endorsers.length
       );
-      for (const endorser of endorsers) {
-        await userService.updateTrustIndex(
-          endorser,
-          endorserTIGain,
-          `Endorsed Loan Repaid: ${contractId}`
-        );
-        console.log(
-          `Updated Endorser ${endorser.name}. TI Gain: ${endorserTIGain}`
-        );
-      }
+      await Promise.all(
+        endorsers.map((endorser) =>
+          userService
+            .updateTrustIndex(
+              endorser,
+              endorserTIGain,
+              `Endorsed Loan Repaid: ${contractId}`
+            )
+            .then(() =>
+              console.log(
+                `Updated Endorser ${endorser.name}. TI Gain: ${endorserTIGain}`
+              )
+            )
+        )
+      );
     }
 
     // --- Finalize Contract and Loan Request Status ---
@@ -263,16 +268,21 @@ export async function settleDefaultedLoan(contract) {
         receiverTILoss,
         endorsers.length
       );
-      for (const endorser of endorsers) {
-        await userService.updateTrustIndex(
-          endorser,
-          -endorserTILoss,
-          `Endorsed Loan Defaulted: ${contract._id}`
-        );
-        console.log(
-          `Updated Endorser ${endorser.name}. TI Loss: ${endorserTILoss}`
-        );
-      }
+      await Promise.all(
+        endorsers.map((endorser) =>
+          userService
+            .updateTrustIndex(
+              endorser,
+              -endorserTILoss,
+              `Endorsed Loan Defaulted: ${contract._id}`
+            )
+            .then(() =>
+              console.log(
+                `Updated Endorser ${endorser.name}. TI Loss: ${endorserTILoss}`
+              )
+            )
+        )
+      );
     }
 
     // --- Finalize Contract Status ---
