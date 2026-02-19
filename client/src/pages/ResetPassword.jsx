@@ -16,13 +16,13 @@ const PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
 
 const RULES = [
-  { label: "At least 8 characters", test: (p) => p.length >= 8 },
-  { label: "One uppercase letter", test: (p) => /[A-Z]/.test(p) },
-  { label: "One lowercase letter", test: (p) => /[a-z]/.test(p) },
-  { label: "One number", test: (p) => /\d/.test(p) },
+  { label: "At least 8 characters", test: p => p.length >= 8 },
+  { label: "One uppercase letter", test: p => /[A-Z]/.test(p) },
+  { label: "One lowercase letter", test: p => /[a-z]/.test(p) },
+  { label: "One number", test: p => /\d/.test(p) },
   {
     label: "One special character (@$!%*?&#^()_-+=)",
-    test: (p) => /[@$!%*?&#^()_\-+=]/.test(p),
+    test: p => /[@$!%*?&#^()_\-+=]/.test(p),
   },
 ];
 
@@ -48,9 +48,12 @@ export default function ResetPassword() {
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center shadow-lg shadow-rose-500/30">
             <AlertCircle size={32} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Invalid Reset Link</h1>
+          <h1 className="text-2xl font-bold text-white mb-2">
+            Invalid Reset Link
+          </h1>
           <p className="text-slate-400 mb-6">
-            This password reset link is missing or malformed. Please request a new one.
+            This password reset link is missing or malformed. Please request a
+            new one.
           </p>
           <Link
             to="/forgot-password"
@@ -63,16 +66,24 @@ export default function ResetPassword() {
     );
   }
 
-  const submit = async (e) => {
+  const submit = async e => {
     e.preventDefault();
     if (!isValid) return;
     setLoading(true);
     setError("");
+
+    console.group("[ResetPassword] submit");
+    console.log("token from URL params :", token);
+    console.log("token length          :", token?.length);
+    console.log("token prefix          :", token?.slice(0, 10) + "...");
+    console.groupEnd();
+
     try {
       const { data } = await auth.resetPassword(token, {
         password,
         passwordConfirm,
       });
+      console.log("[ResetPassword] success response:", data);
       // Auto-login the user
       if (data.token) {
         localStorage.setItem("token", data.token);
@@ -81,6 +92,13 @@ export default function ResetPassword() {
       setSuccess(true);
       setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err) {
+      console.group("[ResetPassword] error");
+      console.log("status :", err.response?.status);
+      console.log("message:", err.response?.data?.message);
+      console.log("full response data:", err.response?.data);
+      console.log("request URL:", err.config?.url);
+      console.groupEnd();
+
       const msg =
         err.response?.data?.message ||
         "Reset token is invalid or has expired. Please request a new one.";
@@ -155,7 +173,7 @@ export default function ResetPassword() {
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter new password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={e => setPassword(e.target.value)}
                       className="w-full pl-12 pr-12 py-3 rounded-xl bg-[#1214] border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                     />
                     <button
@@ -163,11 +181,7 @@ export default function ResetPassword() {
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                     >
-                      {showPassword ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
@@ -180,8 +194,9 @@ export default function ResetPassword() {
                       return (
                         <div
                           key={label}
-                          className={`flex items-center gap-2 text-xs transition-colors ${pass ? "text-emerald-400" : "text-slate-500"
-                            }`}
+                          className={`flex items-center gap-2 text-xs transition-colors ${
+                            pass ? "text-emerald-400" : "text-slate-500"
+                          }`}
                         >
                           {pass ? (
                             <CheckCircle size={13} />
@@ -210,12 +225,13 @@ export default function ResetPassword() {
                       type="password"
                       placeholder="Re-enter new password"
                       value={passwordConfirm}
-                      onChange={(e) => setPasswordConfirm(e.target.value)}
-                      className={`w-full pl-12 pr-4 py-3 rounded-xl bg-[#1214] border text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 transition-all ${passwordConfirm.length > 0 &&
-                          password !== passwordConfirm
+                      onChange={e => setPasswordConfirm(e.target.value)}
+                      className={`w-full pl-12 pr-4 py-3 rounded-xl bg-[#1214] border text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 transition-all ${
+                        passwordConfirm.length > 0 &&
+                        password !== passwordConfirm
                           ? "border-rose-500/50 focus:border-rose-500 focus:ring-rose-500"
                           : "border-white/10 focus:border-blue-500 focus:ring-indigo-500"
-                        }`}
+                      }`}
                     />
                   </div>
                   {passwordConfirm.length > 0 &&
@@ -233,10 +249,7 @@ export default function ResetPassword() {
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <svg
-                        className="animate-spin h-5 w-5"
-                        viewBox="0 0 24 24"
-                      >
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                         <circle
                           className="opacity-25"
                           cx="12"

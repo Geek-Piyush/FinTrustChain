@@ -253,18 +253,32 @@ export const forgotPassword = async (req, res, next) => {
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
-
-    // Hash and store it
-    user.passwordResetToken = crypto
+    const hashedResetToken = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
+
+    // Hash and store it
+    user.passwordResetToken = hashedResetToken;
     user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
     await user.save({ validateBeforeSave: false });
+
+    console.log("[forgotPassword] Token generated", {
+      userId: user._id,
+      rawTokenPrefix: resetToken.slice(0, 10) + "...",
+      rawTokenLength: resetToken.length,
+      storedHashPrefix: hashedResetToken.slice(0, 16) + "...",
+      expiresAt: new Date(user.passwordResetExpires).toISOString(),
+    });
 
     // Build reset URL pointing to the frontend
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
     const resetURL = `${frontendUrl}/reset-password/${resetToken}`;
+
+    console.log("[forgotPassword] Reset URL built", {
+      resetURL,
+      frontendUrl,
+    });
 
     try {
       await new Email(user, resetURL).sendPasswordResetEmail();
@@ -273,7 +287,7 @@ export const forgotPassword = async (req, res, next) => {
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      logger.error("Email send failed during password reset", {
+      console.error("[forgotPassword] Email send failed", {
         error: err.message,
       });
       return next(
@@ -317,10 +331,17 @@ export const resetPassword = asyncHandler(async (req, res) => {
   }
 
   // Hash the token from the URL and find the user
+  const rawToken = req.params.token;
   const hashedToken = crypto
     .createHash("sha256")
-    .update(req.params.token)
+    .update(rawToken)
     .digest("hex");
+
+  console.log("[resetPassword] Incoming token", {
+    rawTokenPrefix: rawToken.slice(0, 10) + "...",
+    rawTokenLength: rawToken.length,
+    computedHashPrefix: hashedToken.slice(0, 16) + "...",
+  });
 
   // First check: does the token exist at all (ignore expiry)?
   // Must read from primary — the token was written moments ago and a
@@ -328,6 +349,19 @@ export const resetPassword = asyncHandler(async (req, res) => {
   const tokenOwner = await User.findOne({
     passwordResetToken: hashedToken,
   }).read("primary");
+
+  console.log("[resetPassword] DB lookup result", {
+    found: !!tokenOwner,
+    userId: tokenOwner?._id ?? null,
+    storedHashPrefix:
+      tokenOwner?.passwordResetToken?.slice(0, 16) + "..." ?? null,
+    expiresAt: tokenOwner?.passwordResetExpires
+      ? new Date(tokenOwner.passwordResetExpires).toISOString()
+      : null,
+    now: new Date().toISOString(),
+    isExpired: tokenOwner ? tokenOwner.passwordResetExpires < Date.now() : null,
+  });
+
   if (!tokenOwner) {
     throw new AppError(
       "Reset token is invalid. Please request a new password reset link.",
