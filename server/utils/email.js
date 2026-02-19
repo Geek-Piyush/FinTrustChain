@@ -97,7 +97,6 @@ function wrapHTML(title, bodyContent) {
 </html>`;
 }
 
-
 // ═══════════════════════════════════════════════
 //  Public Email Class (same API for verification)
 // ═══════════════════════════════════════════════
@@ -205,7 +204,7 @@ export async function sendPaymentReceivedEmail(
   user,
   contractId,
   emiNumber,
-  amount
+  amount,
 ) {
   const name = user.name.split(" ")[0];
   const subject = `✅ EMI #${emiNumber} payment received — ₹${amount.toLocaleString("en-IN")}`;
@@ -227,7 +226,7 @@ export async function sendOverdueEMIEmail(
   emiNumber,
   deduction,
   currentTI,
-  penaltyPercent
+  penaltyPercent,
 ) {
   const name = user.name.split(" ")[0];
   const subject = `⚠️ EMI #${emiNumber} is overdue — TrustIndex penalty applied`;
@@ -278,7 +277,7 @@ export async function sendNotificationEmail(user, subject, message) {
 // ── Support ticket email (with optional attachments) ──
 export async function sendSupportEmail(
   supportAddr,
-  { userName, userEmail, subject, description, contractId, attachments }
+  { userName, userEmail, subject, description, contractId, attachments },
 ) {
   const client = getResend();
   if (!client) {
@@ -290,7 +289,9 @@ export async function sendSupportEmail(
     ? `<tr><td style="padding-bottom:12px; color:#545454; font-size:14px;"><strong>Contract ID:</strong> ${contractId}</td></tr>`
     : "";
 
-  const html = wrapHTML(`Support: ${subject}`, `
+  const html = wrapHTML(
+    `Support: ${subject}`,
+    `
     <tr><td style="padding:8px 0 12px;"><h1 style="margin:0; font-size:22px; color:#545454;">Support Ticket</h1></td></tr>
     <tr><td style="padding-bottom:12px; color:#545454; font-size:14px;">
       <strong>From:</strong> ${userName} &lt;${userEmail}&gt;
@@ -303,7 +304,8 @@ export async function sendSupportEmail(
       ${description}
     </td></tr>
     ${attachments?.length ? `<tr><td style="padding-top:8px; color:#8a8a8a; font-size:13px;">${attachments.length} attachment(s) included below.</td></tr>` : ""}
-  `);
+  `,
+  );
 
   const text = `Support ticket from ${userName} <${userEmail}>\nCategory: ${subject}\n${contractId ? `Contract: ${contractId}\n` : ""}\n${description}`;
 
@@ -319,7 +321,7 @@ export async function sendSupportEmail(
 
     // Attach images if provided (Resend accepts base64 content)
     if (attachments?.length) {
-      payload.attachments = attachments.map((file) => ({
+      payload.attachments = attachments.map(file => ({
         filename: file.originalname,
         content: file.buffer,
       }));

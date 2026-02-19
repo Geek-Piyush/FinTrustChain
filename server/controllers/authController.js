@@ -207,11 +207,13 @@ export const verifyEmail = asyncHandler(async (req, res) => {
     .update(req.params.token)
     .digest("hex");
 
-  // 2. Find the user with the matching token that hasn't expired
+  // 2. Find the user with the matching token that hasn't expired.
+  // Must read from primary — the token was written moments ago and a
+  // secondary replica may not have synced yet (secondaryPreferred global setting).
   const user = await User.findOne({
     emailVerificationToken: hashedToken,
     emailVerificationExpires: { $gt: Date.now() },
-  });
+  }).read("primary");
 
   // 3. If no user is found, the token is invalid or has expired
   if (!user) {
@@ -320,14 +322,32 @@ export const resetPassword = asyncHandler(async (req, res) => {
     .update(req.params.token)
     .digest("hex");
 
-  const user = await User.findOne({
+  // First check: does the token exist at all (ignore expiry)?
+  // Must read from primary — the token was written moments ago and a
+  // secondary replica may not have synced yet (secondaryPreferred global setting).
+  const tokenOwner = await User.findOne({
     passwordResetToken: hashedToken,
-    passwordResetExpires: { $gt: Date.now() },
-  });
-
-  if (!user) {
-    throw new AppError("Reset token is invalid or has expired.", 400);
+  }).read("primary");
+  if (!tokenOwner) {
+    throw new AppError(
+      "Reset token is invalid. Please request a new password reset link.",
+      400,
+    );
   }
+
+  // Second check: is it still within the valid window?
+  if (tokenOwner.passwordResetExpires < Date.now()) {
+    // Clear the stale token
+    tokenOwner.passwordResetToken = undefined;
+    tokenOwner.passwordResetExpires = undefined;
+    await tokenOwner.save({ validateBeforeSave: false });
+    throw new AppError(
+      "Reset token has expired. Please request a new password reset link.",
+      400,
+    );
+  }
+
+  const user = tokenOwner;
 
   // Set new password
   user.passwordHash = await bcryptjs.hash(password, 12);
