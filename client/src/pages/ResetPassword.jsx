@@ -40,6 +40,29 @@ export default function ResetPassword() {
 
   const isValid = PASSWORD_REGEX.test(password) && password === passwordConfirm;
 
+  // Guard: no token in URL → show an actionable error instead of a broken form
+  if (!token) {
+    return (
+      <div className="min-h-screen pt-24 pb-12 px-4 flex items-center justify-center">
+        <div className="w-full max-w-md text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center shadow-lg shadow-rose-500/30">
+            <AlertCircle size={32} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-2">Invalid Reset Link</h1>
+          <p className="text-slate-400 mb-6">
+            This password reset link is missing or malformed. Please request a new one.
+          </p>
+          <Link
+            to="/forgot-password"
+            className="inline-block px-6 py-3 rounded-xl bg-amber-600 text-white font-semibold hover:bg-amber-500 transition-all"
+          >
+            Request New Link
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const submit = async (e) => {
     e.preventDefault();
     if (!isValid) return;
@@ -58,10 +81,10 @@ export default function ResetPassword() {
       setSuccess(true);
       setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err) {
-      setError(
+      const msg =
         err.response?.data?.message ||
-        "Reset token is invalid or has expired. Please request a new one."
-      );
+        "Reset token is invalid or has expired. Please request a new one.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -100,7 +123,19 @@ export default function ResetPassword() {
               {error && (
                 <div className="flex items-start gap-2 mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                  <span>{error}</span>
+                  <span>
+                    {error}{" "}
+                    {(error.toLowerCase().includes("token") ||
+                      error.toLowerCase().includes("invalid") ||
+                      error.toLowerCase().includes("expired")) && (
+                      <Link
+                        to="/forgot-password"
+                        className="underline text-amber-400 hover:text-amber-300 font-medium"
+                      >
+                        Request a new link
+                      </Link>
+                    )}
+                  </span>
                 </div>
               )}
 
