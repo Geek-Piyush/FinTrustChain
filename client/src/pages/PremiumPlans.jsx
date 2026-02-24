@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { subscription } from "../api/api";
 import toast from "react-hot-toast";
-import { Crown, Check, Zap, Shield, TrendingUp, IndianRupee } from "lucide-react";
+import { Crown, Check, Zap, Shield, IndianRupee, Lock } from "lucide-react";
 
 const PLANS = [
   {
@@ -40,25 +40,29 @@ const PLANS = [
 ];
 
 export default function PremiumPlans() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const [duration, setDuration] = useState("BIMONTHLY");
   const [subscribing, setSubscribing] = useState(null);
+
+  const userRole = user?.currentRole; // "RECEIVER" | "LENDER"
 
   const handleSubscribe = async (plan) => {
     setSubscribing(plan);
     try {
       const { data } = await subscription.subscribe(plan, duration);
-      toast.success(data.message);
-      if (refreshUser) await refreshUser();
+      // Redirect to PhonePe payment gateway
+      window.location.href = data.data.redirectUrl;
     } catch (err) {
       toast.error(err?.response?.data?.message || "Subscription failed.");
-    } finally {
       setSubscribing(null);
     }
+    // Note: do NOT reset subscribing to null on success — we're navigating away
   };
 
   const isActivePlan = (plan) =>
     user?.premium?.active && user?.premium?.plan === plan;
+
+  const isPlanLocked = (plan) => userRole && userRole !== plan;
 
   return (
     <div className="min-h-screen pt-24 pb-12 px-4">
@@ -84,8 +88,8 @@ export default function PremiumPlans() {
           <button
             onClick={() => setDuration("BIMONTHLY")}
             className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all ${duration === "BIMONTHLY"
-                ? "bg-blue-600 text-white"
-                : "bg-[#0d1117]/50 text-gray-400 border border-white/10 hover:text-gray-300"
+              ? "bg-blue-600 text-white"
+              : "bg-[#0d1117]/50 text-gray-400 border border-white/10 hover:text-gray-300"
               }`}
           >
             Bimonthly
@@ -93,8 +97,8 @@ export default function PremiumPlans() {
           <button
             onClick={() => setDuration("ANNUAL")}
             className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${duration === "ANNUAL"
-                ? "bg-blue-600 text-white"
-                : "bg-[#0d1117]/50 text-gray-400 border border-white/10 hover:text-gray-300"
+              ? "bg-blue-600 text-white"
+              : "bg-[#0d1117]/50 text-gray-400 border border-white/10 hover:text-gray-300"
               }`}
           >
             Annual
@@ -119,20 +123,40 @@ export default function PremiumPlans() {
           </div>
         )}
 
+        {/* Role info banner */}
+        {userRole && (
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 mb-6 text-center">
+            <p className="text-gray-400 text-sm">
+              You are currently in{" "}
+              <span className="text-white font-semibold">{userRole}</span> mode.
+              {" "}Only the{" "}
+              <span className="text-white font-semibold">{userRole} Premium</span>{" "}
+              plan is available. Switch roles in your profile to access the other plan.
+            </p>
+          </div>
+        )}
+
         {/* Plan Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {PLANS.map(({ plan, title, icon: Icon, color, border, pricing, benefits }) => {
             const active = isActivePlan(plan);
+            const locked = isPlanLocked(plan);
             const p = pricing[duration];
             return (
               <div
                 key={plan}
-                className={`relative bg-[#1a2332]/40 ${border} border rounded-3xl p-8 flex flex-col ${active ? "ring-2 ring-purple-500/30" : ""
-                  }`}
+                className={`relative bg-[#1a2332]/40 ${border} border rounded-3xl p-8 flex flex-col transition-all ${active ? "ring-2 ring-purple-500/30" : ""}
+                  ${locked ? "opacity-50 grayscale" : ""}`}
               >
                 {active && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
                     ACTIVE
+                  </div>
+                )}
+                {locked && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gray-700 text-gray-300 text-xs font-semibold rounded-full flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    Switch to {plan} mode
                   </div>
                 )}
 
@@ -163,24 +187,31 @@ export default function PremiumPlans() {
                 </ul>
 
                 <button
-                  onClick={() => handleSubscribe(plan)}
-                  disabled={subscribing === plan || active}
+                  onClick={() => !locked && !active && handleSubscribe(plan)}
+                  disabled={subscribing === plan || active || locked}
                   className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 ${active
                       ? "bg-purple-500/10 text-purple-400 cursor-default"
-                      : `bg-gradient-to-r ${color} text-white hover:opacity-90 disabled:opacity-50`
+                      : locked
+                        ? "bg-white/5 text-gray-500 cursor-not-allowed"
+                        : `bg-gradient-to-r ${color} text-white hover:opacity-90 disabled:opacity-50`
                     }`}
                 >
                   {subscribing === plan ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Subscribing...
+                      Redirecting to PhonePe…
                     </>
                   ) : active ? (
                     "Current Plan"
+                  ) : locked ? (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      Switch to {plan} mode first
+                    </>
                   ) : (
                     <>
                       <IndianRupee className="w-4 h-4" />
-                      Subscribe for ₹{p.amount}
+                      Pay ₹{p.amount} via PhonePe
                     </>
                   )}
                 </button>
@@ -192,7 +223,7 @@ export default function PremiumPlans() {
         {/* Info note */}
         <div className="mt-8 bg-[#0d1117]/50 border border-white/5 rounded-xl p-4 text-center">
           <p className="text-gray-500 text-sm">
-            Premium is activated instantly. Benefits are enforced automatically on all new transactions.
+            You will be redirected to PhonePe to complete payment. Premium is activated automatically after successful payment.
           </p>
         </div>
       </div>

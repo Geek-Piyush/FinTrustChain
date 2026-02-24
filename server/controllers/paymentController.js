@@ -4,10 +4,23 @@ import { phonepeClient } from "../services/paymentService.js";
 import Contract from "../models/contractModel.js";
 import Transaction from "../models/transactionModel.js";
 import PlatformRevenue from "../models/platformRevenueModel.js";
+import User from "../models/userModel.js";
 import { sendPaymentReceivedEmail } from "../utils/email.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import AppError from "../utils/AppError.js";
 import logger from "../utils/logger.js";
+
+// Pricing mirror — kept in sync with userController.js
+const SUBSCRIPTION_PRICING = {
+  RECEIVER: {
+    BIMONTHLY: { amount: 99, days: 60 },
+    ANNUAL: { amount: 499, days: 365 },
+  },
+  LENDER: {
+    BIMONTHLY: { amount: 199, days: 60 },
+    ANNUAL: { amount: 999, days: 365 },
+  },
+};
 
 // POST /payments/pay
 export const createPayment = asyncHandler(async (req, res) => {
@@ -110,7 +123,14 @@ export const checkPaymentStatus = async (req, res, next) => {
           ? parseInt(metaInfo.emiNumber)
           : null;
 
-        if (contractId) {
+        if (paymentType === "SUBSCRIPTION") {
+          const plan = metaInfo.plan;
+          const duration = metaInfo.duration;
+          const userId = metaInfo.userId;
+          if (plan && duration && userId) {
+            await processConfirmedSubscription(userId, plan, duration, merchantOrderId);
+          }
+        } else if (contractId) {
           await processConfirmedPayment(
             contractId,
             paymentType,
@@ -130,7 +150,22 @@ export const checkPaymentStatus = async (req, res, next) => {
       const parts = merchantOrderId.split("_");
       let paymentType, contractId;
 
-      if (parts[0] === "GUARANTOR" && parts[1] === "PAY") {
+      if (parts[0] === "SUBSCRIPTION") {
+        // SUBSCRIPTION_<PLAN>_<userId>_<suffix>
+        paymentType = "SUBSCRIPTION";
+        const plan = parts[1];
+        const userId = parts[2];
+        const duration = req.query.duration;
+
+        if (plan && userId && duration) {
+          logger.info(
+            `[DEMO MODE] Auto-confirming SUBSCRIPTION ${plan}/${duration} for user ${userId}`,
+          );
+          await processConfirmedSubscription(userId, plan, duration, merchantOrderId);
+          paymentState = "COMPLETED";
+          verified = true;
+        }
+      } else if (parts[0] === "GUARANTOR" && parts[1] === "PAY") {
         paymentType = "GUARANTOR_PAY";
         contractId = parts[2];
       } else {
@@ -138,11 +173,10 @@ export const checkPaymentStatus = async (req, res, next) => {
         contractId = parts[1];
       }
 
-      const emiNumber = req.query.emiNumber
-        ? parseInt(req.query.emiNumber)
-        : null;
-
-      if (contractId) {
+      if (paymentType !== "SUBSCRIPTION" && contractId) {
+        const emiNumber = req.query.emiNumber
+          ? parseInt(req.query.emiNumber)
+          : null;
         logger.info(
           `[DEMO MODE] Auto-confirming ${paymentType} for contract ${contractId}`,
         );
@@ -337,6 +371,49 @@ function scheduleSettlement(contractId) {
     }
   });
 }
+
+/**
+ * Activates a premium subscription after payment is confirmed.
+ * Idempotent: skips if PlatformRevenue already has this merchantOrderId.
+ */
+async function processConfirmedSubscription(
+  userId,
+  plan,
+  duration,
+  merchantOrderId,
+) {
+  // Idempotency check
+  const existing = await PlatformRevenue.findOne({ description: { $regex: merchantOrderId } });
+  if (existing) return;
+
+  const pricing = SUBSCRIPTION_PRICING[plan]?.[duration];
+  if (!pricing) {
+    logger.error(`[SUBSCRIPTION] Unknown plan/duration: ${plan}/${duration}`);
+    return;
+  }
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + pricing.days);
+
+  await User.findByIdAndUpdate(userId, {
+    "premium.active": true,
+    "premium.plan": plan,
+    "premium.duration": duration,
+    "premium.expiresAt": expiresAt,
+  });
+
+  await PlatformRevenue.create({
+    type: "SUBSCRIPTION",
+    user: userId,
+    amount: pricing.amount,
+    description: `${plan} ${duration} subscription (₹${pricing.amount}) [${merchantOrderId}]`,
+  });
+
+  logger.info(
+    `[SUBSCRIPTION] Activated ${plan} ${duration} for user ${userId} until ${expiresAt.toLocaleDateString()}`,
+  );
+}
+
 
 import crypto from "crypto";
 

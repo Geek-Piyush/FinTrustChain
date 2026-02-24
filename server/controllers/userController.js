@@ -4,6 +4,7 @@ import Contract from "../models/contractModel.js";
 import PlatformRevenue from "../models/platformRevenueModel.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import { initiateSubscriptionPayment } from "../services/paymentService.js";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";
@@ -207,6 +208,15 @@ export const subscribe = asyncHandler(async (req, res) => {
     throw new AppError("Duration must be 'BIMONTHLY' or 'ANNUAL'.", 400);
   }
 
+  // Role enforcement: user must be in the matching role to subscribe
+  const userRole = req.user.currentRole; // "LENDER" or "RECEIVER"
+  if (userRole !== plan) {
+    throw new AppError(
+      `You must be in ${plan} mode to subscribe to the ${plan} plan. Switch your role first.`,
+      403,
+    );
+  }
+
   const pricing = PREMIUM_PRICING[plan][duration];
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + pricing.days);
@@ -232,8 +242,8 @@ export const subscribe = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     status: "success",
-    message: `${plan} ${duration} premium activated until ${expiresAt.toLocaleDateString()}.`,
-    data: { user },
+    message: "Redirecting to payment gateway…",
+    data: { redirectUrl },
   });
 });
 

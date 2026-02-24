@@ -71,19 +71,11 @@ export default function ResetPassword() {
     if (!isValid) return;
     setLoading(true);
     setError("");
-
-    console.group("[ResetPassword] submit");
-    console.log("token from URL params :", token);
-    console.log("token length          :", token?.length);
-    console.log("token prefix          :", token?.slice(0, 10) + "...");
-    console.groupEnd();
-
     try {
       const { data } = await auth.resetPassword(token, {
         password,
         passwordConfirm,
       });
-      console.log("[ResetPassword] success response:", data);
       // Auto-login the user
       if (data.token) {
         localStorage.setItem("token", data.token);
@@ -92,13 +84,6 @@ export default function ResetPassword() {
       setSuccess(true);
       setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err) {
-      console.group("[ResetPassword] error");
-      console.log("status :", err.response?.status);
-      console.log("message:", err.response?.data?.message);
-      console.log("full response data:", err.response?.data);
-      console.log("request URL:", err.config?.url);
-      console.groupEnd();
-
       const msg =
         err.response?.data?.message ||
         "Reset token is invalid or has expired. Please request a new one.";

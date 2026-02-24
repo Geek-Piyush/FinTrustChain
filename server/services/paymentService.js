@@ -103,5 +103,57 @@ export async function initiatePayment(
   }
 }
 
+/**
+ * Initiates a subscription payment via PhonePe.
+ * @param {object} user - The authenticated user.
+ * @param {string} plan - "RECEIVER" or "LENDER".
+ * @param {string} duration - "BIMONTHLY" or "ANNUAL".
+ * @param {number} amount - Subscription amount in INR.
+ * @returns {string} The PhonePe redirect URL.
+ */
+export async function initiateSubscriptionPayment(user, plan, duration, amount) {
+  try {
+    const amountInPaisa = Math.round(amount * 100);
+    const uniqueSuffix = randomUUID().slice(0, 8);
+    // Pattern: SUBSCRIPTION_<PLAN>_<userId>_<suffix>
+    // The demo-mode fallback in paymentController parses this to extract plan & userId.
+    const merchantOrderId = `SUBSCRIPTION_${plan}_${user._id.toString()}_${uniqueSuffix}`;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
+    const redirectUrl =
+      `${frontendUrl}/payment-status` +
+      `?merchantOrderId=${merchantOrderId}` +
+      `&type=SUBSCRIPTION` +
+      `&plan=${plan}` +
+      `&duration=${duration}`;
+
+    const metaInfo = {
+      paymentType: "SUBSCRIPTION",
+      plan,
+      duration,
+      userId: user._id.toString(),
+    };
+
+    const request = StandardCheckoutPayRequest.builder()
+      .merchantOrderId(merchantOrderId)
+      .amount(amountInPaisa)
+      .redirectUrl(redirectUrl)
+      .metaInfo(metaInfo)
+      .build();
+
+    const response = await phonepeClient.pay(request);
+    return response.redirectUrl;
+  } catch (error) {
+    logger.error("PhonePe Subscription Payment Initiation Error", {
+      message: error.message,
+      httpStatusCode: error.httpStatusCode,
+      data: error.data,
+    });
+    throw new AppError(
+      "Could not initiate subscription payment. Please try again later.",
+      502,
+    );
+  }
+}
+
 // Export the initialized client so other files can use it.
 export { phonepeClient };

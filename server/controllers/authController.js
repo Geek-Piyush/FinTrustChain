@@ -263,22 +263,9 @@ export const forgotPassword = async (req, res, next) => {
     user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
     await user.save({ validateBeforeSave: false });
 
-    console.log("[forgotPassword] Token generated", {
-      userId: user._id,
-      rawTokenPrefix: resetToken.slice(0, 10) + "...",
-      rawTokenLength: resetToken.length,
-      storedHashPrefix: hashedResetToken.slice(0, 16) + "...",
-      expiresAt: new Date(user.passwordResetExpires).toISOString(),
-    });
-
     // Build reset URL pointing to the frontend
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
     const resetURL = `${frontendUrl}/reset-password/${resetToken}`;
-
-    console.log("[forgotPassword] Reset URL built", {
-      resetURL,
-      frontendUrl,
-    });
 
     try {
       await new Email(user, resetURL).sendPasswordResetEmail();
@@ -287,7 +274,7 @@ export const forgotPassword = async (req, res, next) => {
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      console.error("[forgotPassword] Email send failed", {
+      logger.error("Email send failed during password reset", {
         error: err.message,
       });
       return next(
@@ -337,12 +324,6 @@ export const resetPassword = asyncHandler(async (req, res) => {
     .update(rawToken)
     .digest("hex");
 
-  console.log("[resetPassword] Incoming token", {
-    rawTokenPrefix: rawToken.slice(0, 10) + "...",
-    rawTokenLength: rawToken.length,
-    computedHashPrefix: hashedToken.slice(0, 16) + "...",
-  });
-
   // First check: does the token exist at all (ignore expiry)?
   // Must read from primary — the token was written moments ago and a
   // secondary replica may not have synced yet (secondaryPreferred global setting).
@@ -350,19 +331,10 @@ export const resetPassword = asyncHandler(async (req, res) => {
     passwordResetToken: hashedToken,
   }).read("primary");
 
-  console.log("[resetPassword] DB lookup result", {
-    found: !!tokenOwner,
-    userId: tokenOwner?._id ?? null,
-    storedHashPrefix:
-      tokenOwner?.passwordResetToken?.slice(0, 16) + "..." ?? null,
-    expiresAt: tokenOwner?.passwordResetExpires
-      ? new Date(tokenOwner.passwordResetExpires).toISOString()
-      : null,
-    now: new Date().toISOString(),
-    isExpired: tokenOwner ? tokenOwner.passwordResetExpires < Date.now() : null,
-  });
-
   if (!tokenOwner) {
+    logger.warn("[resetPassword] Token not found in DB", {
+      computedHashPrefix: hashedToken.slice(0, 16) + "...",
+    });
     throw new AppError(
       "Reset token is invalid. Please request a new password reset link.",
       400,
@@ -389,6 +361,8 @@ export const resetPassword = asyncHandler(async (req, res) => {
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
   await user.save({ validateBeforeSave: false });
+
+  logger.info("Password reset successful", { userId: user._id });
 
   // Log the user in
   createSendToken(user, 200, res);
