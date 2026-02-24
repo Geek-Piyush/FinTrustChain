@@ -241,8 +241,8 @@ export const subscribe = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     status: "success",
-    message: "Redirecting to payment gateway…",
-    data: { redirectUrl },
+    message: `${plan} ${duration} premium activated until ${expiresAt.toLocaleDateString()}.`,
+    data: { user },
   });
 });
 
