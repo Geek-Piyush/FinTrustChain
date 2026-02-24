@@ -106,6 +106,26 @@ export const checkPaymentStatus = async (req, res, next) => {
     let paymentState = "PENDING";
     let verified = false;
 
+    // Helper: extract payment details from the merchantOrderId string
+    // Pattern: SUBSCRIPTION_<PLAN>_<userId>_<suffix>
+    //          GUARANTOR_PAY_<contractId>_<suffix>
+    //          <paymentType>_<contractId>_<suffix>
+    const resolvePaymentDetails = (orderId) => {
+      const parts = orderId.split("_");
+      if (parts[0] === "SUBSCRIPTION") {
+        return {
+          paymentType: "SUBSCRIPTION",
+          plan: parts[1],
+          userId: parts[2],
+          duration: req.query.duration || null,
+        };
+      }
+      if (parts[0] === "GUARANTOR" && parts[1] === "PAY") {
+        return { paymentType: "GUARANTOR_PAY", contractId: parts[2] };
+      }
+      return { paymentType: parts[0], contractId: parts[1] };
+    };
+
     try {
       const statusResponse =
         await phonepeClient.getOrderStatus(merchantOrderId);
@@ -115,28 +135,27 @@ export const checkPaymentStatus = async (req, res, next) => {
         paymentState = "COMPLETED";
         verified = true;
 
-        // Use metaInfo from PhonePe response if available
+        // Use metaInfo if PhonePe returned it, otherwise parse merchantOrderId
         const metaInfo = statusResponse.metaInfo || {};
-        const contractId = metaInfo.contractId;
-        const paymentType = metaInfo.paymentType || "EMI";
-        const emiNumber = metaInfo.emiNumber
-          ? parseInt(metaInfo.emiNumber)
-          : null;
+        const paymentType = metaInfo.paymentType || resolvePaymentDetails(merchantOrderId).paymentType;
 
         if (paymentType === "SUBSCRIPTION") {
-          const plan = metaInfo.plan;
-          const duration = metaInfo.duration;
-          const userId = metaInfo.userId;
+          const plan = metaInfo.plan || resolvePaymentDetails(merchantOrderId).plan;
+          const duration = metaInfo.duration || resolvePaymentDetails(merchantOrderId).duration;
+          const userId = metaInfo.userId || resolvePaymentDetails(merchantOrderId).userId;
           if (plan && duration && userId) {
             await processConfirmedSubscription(userId, plan, duration, merchantOrderId);
           }
-        } else if (contractId) {
-          await processConfirmedPayment(
-            contractId,
-            paymentType,
-            emiNumber,
-            merchantOrderId,
-          );
+        } else {
+          const contractId = metaInfo.contractId || resolvePaymentDetails(merchantOrderId).contractId;
+          const emiNumber = metaInfo.emiNumber
+            ? parseInt(metaInfo.emiNumber)
+            : req.query.emiNumber
+            ? parseInt(req.query.emiNumber)
+            : null;
+          if (contractId) {
+            await processConfirmedPayment(contractId, paymentType, emiNumber, merchantOrderId);
+          }
         }
       } else if (state === "FAILED") {
         paymentState = "FAILED";
@@ -146,43 +165,28 @@ export const checkPaymentStatus = async (req, res, next) => {
         `PhonePe API unavailable for ${merchantOrderId}: ${err.message}`,
       );
 
-      // ── Demo/Student fallback ──
-      const parts = merchantOrderId.split("_");
-      let paymentType, contractId;
+      // ── Demo/Student fallback — auto-confirm using merchantOrderId ──
+      const details = resolvePaymentDetails(merchantOrderId);
 
-      if (parts[0] === "SUBSCRIPTION") {
-        // SUBSCRIPTION_<PLAN>_<userId>_<suffix>
-        paymentType = "SUBSCRIPTION";
-        const plan = parts[1];
-        const userId = parts[2];
-        const duration = req.query.duration;
-
-        if (plan && userId && duration) {
+      if (details.paymentType === "SUBSCRIPTION") {
+        if (details.plan && details.userId && details.duration) {
           logger.info(
-            `[DEMO MODE] Auto-confirming SUBSCRIPTION ${plan}/${duration} for user ${userId}`,
+            `[DEMO MODE] Auto-confirming SUBSCRIPTION ${details.plan}/${details.duration} for user ${details.userId}`,
           );
-          await processConfirmedSubscription(userId, plan, duration, merchantOrderId);
+          await processConfirmedSubscription(details.userId, details.plan, details.duration, merchantOrderId);
           paymentState = "COMPLETED";
           verified = true;
         }
-      } else if (parts[0] === "GUARANTOR" && parts[1] === "PAY") {
-        paymentType = "GUARANTOR_PAY";
-        contractId = parts[2];
-      } else {
-        paymentType = parts[0];
-        contractId = parts[1];
-      }
-
-      if (paymentType !== "SUBSCRIPTION" && contractId) {
+      } else if (details.contractId) {
         const emiNumber = req.query.emiNumber
           ? parseInt(req.query.emiNumber)
           : null;
         logger.info(
-          `[DEMO MODE] Auto-confirming ${paymentType} for contract ${contractId}`,
+          `[DEMO MODE] Auto-confirming ${details.paymentType} for contract ${details.contractId}`,
         );
         await processConfirmedPayment(
-          contractId,
-          paymentType,
+          details.contractId,
+          details.paymentType,
           emiNumber,
           merchantOrderId,
         );
