@@ -4,7 +4,6 @@ import Contract from "../models/contractModel.js";
 import PlatformRevenue from "../models/platformRevenueModel.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
-import { initiateSubscriptionPayment } from "../services/paymentService.js";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";

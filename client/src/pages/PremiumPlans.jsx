@@ -40,7 +40,7 @@ const PLANS = [
 ];
 
 export default function PremiumPlans() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [duration, setDuration] = useState("BIMONTHLY");
   const [subscribing, setSubscribing] = useState(null);
 
@@ -50,13 +50,20 @@ export default function PremiumPlans() {
     setSubscribing(plan);
     try {
       const { data } = await subscription.subscribe(plan, duration);
-      // Redirect to PhonePe payment gateway
-      window.location.href = data.data.redirectUrl;
+      const redirectUrl = data?.data?.redirectUrl;
+      if (redirectUrl) {
+        // PhonePe gateway — navigate away (don't reset subscribing)
+        window.location.href = redirectUrl;
+      } else {
+        // Direct-activation mode — refresh user and show success
+        toast.success(data.message || "Premium plan activated!");
+        if (refreshUser) await refreshUser();
+        setSubscribing(null);
+      }
     } catch (err) {
       toast.error(err?.response?.data?.message || "Subscription failed.");
       setSubscribing(null);
     }
-    // Note: do NOT reset subscribing to null on success — we're navigating away
   };
 
   const isActivePlan = (plan) =>
@@ -190,10 +197,10 @@ export default function PremiumPlans() {
                   onClick={() => !locked && !active && handleSubscribe(plan)}
                   disabled={subscribing === plan || active || locked}
                   className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 ${active
-                      ? "bg-purple-500/10 text-purple-400 cursor-default"
-                      : locked
-                        ? "bg-white/5 text-gray-500 cursor-not-allowed"
-                        : `bg-gradient-to-r ${color} text-white hover:opacity-90 disabled:opacity-50`
+                    ? "bg-purple-500/10 text-purple-400 cursor-default"
+                    : locked
+                      ? "bg-white/5 text-gray-500 cursor-not-allowed"
+                      : `bg-gradient-to-r ${color} text-white hover:opacity-90 disabled:opacity-50`
                     }`}
                 >
                   {subscribing === plan ? (
