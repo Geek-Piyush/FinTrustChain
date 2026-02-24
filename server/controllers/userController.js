@@ -217,32 +217,24 @@ export const subscribe = asyncHandler(async (req, res) => {
   }
 
   const pricing = PREMIUM_PRICING[plan][duration];
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + pricing.days);
 
-  const user = await User.findByIdAndUpdate(
-    req.user.id,
-    {
-      "premium.active": true,
-      "premium.plan": plan,
-      "premium.duration": duration,
-      "premium.expiresAt": expiresAt,
-    },
-    { new: true },
-  ).select("+upiId");
+  // Dynamic import avoids crashing the entire module if paymentService init fails
+  const { initiateSubscriptionPayment } = await import(
+    "../services/paymentService.js"
+  );
 
-  // Record subscription revenue
-  await PlatformRevenue.create({
-    type: "SUBSCRIPTION",
-    user: req.user.id,
-    amount: pricing.amount,
-    description: `${plan} ${duration} subscription (₹${pricing.amount})`,
-  });
+  // Initiate PhonePe payment — plan activates only after payment is confirmed
+  const redirectUrl = await initiateSubscriptionPayment(
+    req.user,
+    plan,
+    duration,
+    pricing.amount,
+  );
 
   res.status(200).json({
     status: "success",
-    message: `${plan} ${duration} premium activated until ${expiresAt.toLocaleDateString()}.`,
-    data: { user },
+    message: "Redirecting to payment gateway…",
+    data: { redirectUrl },
   });
 });
 
