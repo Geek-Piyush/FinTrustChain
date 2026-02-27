@@ -77,12 +77,13 @@ app.use(
         imgSrc: ["'self'", "data:", "https:"],
       },
     },
-  })
+  }),
 );
 
 // CORS Configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  // origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: "*",
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -104,7 +105,7 @@ app.use(
   "/public",
   (req, res, next) => {
     const blocked = ["/contracts", "/img/esigns", "/img/proofs"];
-    if (blocked.some((dir) => req.path.startsWith(dir))) {
+    if (blocked.some(dir => req.path.startsWith(dir))) {
       return res.status(403).json({ message: "Access denied." });
     }
     next();
@@ -114,7 +115,7 @@ app.use(
     setHeaders: res => {
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     },
-  })
+  }),
 );
 
 // Apply rate limiting to all API routes
@@ -155,7 +156,7 @@ app.use("/api/v1/admin", adminRoutes);
 app.use((err, req, res, next) => {
   // Handle Mongoose validation errors
   if (err.name === "ValidationError") {
-    const messages = Object.values(err.errors).map((e) => e.message);
+    const messages = Object.values(err.errors).map(e => e.message);
     err.statusCode = 400;
     err.message = messages.join(". ");
     err.isOperational = true;
