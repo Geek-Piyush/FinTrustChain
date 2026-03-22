@@ -61,7 +61,7 @@ export const uploadProof = multer({
 // Internal function — NOT a route handler. Keeps its own try/catch for the DB session.
 export const createContract = async loanRequestId => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  session.startTransaction({ readPreference: "primary" });
   try {
     const loanRequest = await LoanRequest.findById(loanRequestId)
       .populate("receiver")

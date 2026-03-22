@@ -9,7 +9,7 @@ import AppError from "../utils/AppError.js";
 // NOTE: Keeps manual try/catch because of DB session with abort on error
 export const createEndorsement = async (req, res, next) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  session.startTransaction({ readPreference: "primary" });
   try {
     const endorser = req.user;
     const { receiverId } = req.body;
@@ -95,7 +95,7 @@ export const createEndorsement = async (req, res, next) => {
 // NOTE: Keeps manual try/catch because of DB session with abort on error
 export const removeEndorsement = async (req, res, next) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
+  session.startTransaction({ readPreference: "primary" });
   try {
     const endorser = req.user;
     const receiverId = req.params.id;
