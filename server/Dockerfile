@@ -16,11 +16,11 @@ RUN apk add --no-cache \
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --omit=dev && npm cache clean --force
-
-# Copy application files
+# Copy source before install to prevent stale dependency layers on source-only deploys
 COPY . .
+
+# Install dependencies
+RUN npm ci --omit=dev --no-audit && npm cache clean --force
 
 # Create necessary directories with proper permissions
 RUN mkdir -p logs \

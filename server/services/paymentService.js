@@ -1,10 +1,41 @@
-import phonepe from "pg-sdk-node";
-const { StandardCheckoutClient, Env, StandardCheckoutPayRequest } = phonepe;
-
 import { randomUUID } from "crypto";
+import { createRequire } from "module";
 import Contract from "../models/contractModel.js";
 import AppError from "../utils/AppError.js";
 import logger from "../utils/logger.js";
+
+const require = createRequire(import.meta.url);
+
+function loadPhonePeSdk() {
+  // Some pg-sdk-node releases point package main to dist/src/index.js,
+  // while others ship dist/index.js. Try both plus the package root.
+  const candidates = [
+    "pg-sdk-node",
+    "pg-sdk-node/dist/index.js",
+    "pg-sdk-node/dist/src/index.js",
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch (error) {
+      if (
+        error?.code !== "MODULE_NOT_FOUND" &&
+        error?.code !== "ERR_MODULE_NOT_FOUND"
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new AppError(
+    "PhonePe SDK could not be loaded. Verify pg-sdk-node is installed correctly.",
+    500,
+  );
+}
+
+const phonepe = loadPhonePeSdk();
+const { StandardCheckoutClient, Env, StandardCheckoutPayRequest } = phonepe;
 
 // --- Initialize the PhonePe Client (Singleton Pattern) ---
 const clientId = process.env.PHONEPE_CLIENT_ID;
@@ -15,7 +46,7 @@ const env = Env.SANDBOX;
 if (!clientId || !clientSecret || !clientVersion) {
   throw new AppError(
     "PhonePe client credentials are not configured in .env file.",
-    500
+    500,
   );
 }
 
@@ -23,7 +54,7 @@ const phonepeClient = StandardCheckoutClient.getInstance(
   clientId,
   clientSecret,
   clientVersion,
-  env
+  env,
 );
 
 /**
@@ -40,7 +71,7 @@ export async function initiatePayment(
   user,
   paymentAmount,
   paymentType = "EMI",
-  emiNumber = null
+  emiNumber = null,
 ) {
   try {
     const contract = await Contract.findById(contractId);
@@ -99,7 +130,10 @@ export async function initiatePayment(
       data: error.data,
     });
 
-    throw new AppError("Could not initiate payment. Please try again later.", 502);
+    throw new AppError(
+      "Could not initiate payment. Please try again later.",
+      502,
+    );
   }
 }
 
@@ -111,7 +145,12 @@ export async function initiatePayment(
  * @param {number} amount - Subscription amount in INR.
  * @returns {string} The PhonePe redirect URL.
  */
-export async function initiateSubscriptionPayment(user, plan, duration, amount) {
+export async function initiateSubscriptionPayment(
+  user,
+  plan,
+  duration,
+  amount,
+) {
   try {
     const amountInPaisa = Math.round(amount * 100);
     const uniqueSuffix = randomUUID().slice(0, 8);
