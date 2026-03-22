@@ -13,14 +13,18 @@ RUN apk add --no-cache \
     pango-dev \
     giflib-dev
 
-# Copy package files
-COPY package*.json ./
-
-# Copy source before install to prevent stale dependency layers on source-only deploys
+# Copy build context
 COPY . .
 
-# Install dependencies
-RUN npm ci --omit=dev --no-audit && npm cache clean --force
+# If build context is repo root, normalize to server app root.
+RUN if [ -f server/package.json ]; then cp -a server/. /usr/src/app/; fi
+
+# Install dependencies (deterministic when lockfile exists).
+RUN if [ -f package-lock.json ]; then \
+            npm ci --omit=dev --no-audit; \
+        else \
+            npm install --omit=dev --no-audit; \
+        fi && npm cache clean --force
 
 # Create necessary directories with proper permissions
 RUN mkdir -p logs \
